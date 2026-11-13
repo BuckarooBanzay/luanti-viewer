@@ -1,0 +1,9 @@
+[submodule "minetest_game"]
+	path = minetest_game
+	url = https://github.com/luanti-org/minetest_game
+[submodule "worldmods/moreblocks"]
+	path = worldmods/moreblocks
+	url = https://github.com/minetest-mods/moreblocks
+[submodule "worldmods/worldedit"]
+	path = worldmods/worldedit
+	url = https://github.com/Uberi/Minetest-WorldEdit
