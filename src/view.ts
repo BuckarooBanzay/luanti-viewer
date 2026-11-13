@@ -211,9 +211,16 @@ export function createView(element: HTMLElement, options: ViewerOptions): void {
     }
 
     const load = async () => {
-        setStatus("loading node definitions")
-        const nodes = new NodeRegistry(await options.getNodeDefinitions, materials)
+        const nodes = new NodeRegistry(async name => {
+            try {
+                return await options.getNodeDefinitions(name)
+            } catch (e) {
+                console.error(`[luanti-viewer] failed to load node definition '${name}'`, e)
+                return null
+            }
+        }, materials)
         const world = new World(nodes)
+        await nodes.ensure(["air"])
 
         // mapblocks, from the center outwards
         const positions: MapblockPosition[] = []
@@ -236,6 +243,8 @@ export function createView(element: HTMLElement, options: ViewerOptions): void {
             try {
                 const mapblock = await options.getMapblock(pos)
                 if (mapblock) {
+                    // the node ids are resolved synchronously, the definitions have to be present
+                    await nodes.ensure(mapblock.nodeNames.values())
                     world.set(pos, mapblock)
                 }
             } catch (e) {

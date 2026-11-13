@@ -157,7 +157,8 @@ export type MapblockPosition = {
 }
 
 export type ViewerOptions = {
-    getNodeDefinitions: Promise<Map<string, NodeDefinition>>
+    /** fetches the definition of a single node, null if the node is unknown, called once per node name */
+    getNodeDefinitions(nodename: string): Promise<NodeDefinition|null>
     getMapblock(pos: MapblockPosition): Promise<ParsedMapblock|null>
     /** fetches a texture (.png) or model (.obj / .b3d) by its file name, null if it does not exist */
     getMedia(filename: string): Promise<Blob|null>

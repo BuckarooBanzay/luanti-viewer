@@ -37,7 +37,7 @@ async function main() {
         // generated scene with one example per drawtype, uses the exported node definitions and media
         const scene = createShowcase()
         options = {
-            getNodeDefinitions: nodeDefinitions.then(defs => new Map([...defs, ...scene.nodeDefinitions])),
+            getNodeDefinitions: async name => scene.nodeDefinitions.get(name) ?? (await nodeDefinitions).get(name) ?? null,
             getMapblock: async pos => scene.getMapblock(pos),
             getMedia,
             minPos: scene.minPos,
@@ -46,7 +46,7 @@ async function main() {
     } else {
         const manifest = await fetchJson<{ min: MapblockPosition, max: MapblockPosition }>("mapblocks/manifest.json")
         options = {
-            getNodeDefinitions: nodeDefinitions,
+            getNodeDefinitions: async name => (await nodeDefinitions).get(name) ?? null,
             getMapblock,
             getMedia,
             minPos: manifest.min,

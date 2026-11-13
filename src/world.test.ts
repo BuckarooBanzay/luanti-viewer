@@ -19,7 +19,7 @@ function createBlock(names: string[], fill: (x: number, y: number, z: number) =>
 }
 
 describe("World", () => {
-    const nodes = new NodeRegistry(new Map(), { getTile: () => 0 })
+    const nodes = new NodeRegistry(async () => null, { getTile: () => 0 })
     const world = new World(nodes)
     world.set({ x: 0, y: 0, z: 0 }, createBlock(["air", "a", "b"], (x, y, z) => [x === 15 ? 1 : y === 0 ? 2 : 0, x, z]))
     world.set({ x: 1, y: 0, z: 0 }, createBlock(["b", "c"], x => [x === 0 ? 1 : 0, 7, 9]))

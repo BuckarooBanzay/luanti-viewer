@@ -166,21 +166,73 @@ export function parseNodeColor(color: string | Color | null | undefined): [numbe
     return [1, 1, 1]
 }
 
-/** interns node names into dense ids and compiles their definitions on first use */
+/** fetches a single node definition, null if the node is unknown */
+export type NodeDefinitionSource = (nodename: string) => Promise<NodeDefinition | null>
+
+/**
+ * interns node names into dense ids and compiles their definitions on first use,
+ * the definitions are fetched with `ensure` before the (synchronous) ids are requested
+ */
 export class NodeRegistry {
     /** indexed by the internal content id, index 0 is CONTENT_IGNORE */
     readonly infos: NodeInfo[] = []
     private readonly ids = new Map<string, number>()
-    readonly airId: number
+    /** the fetched definitions, null for unknown nodes */
+    private readonly defs = new Map<string, NodeDefinition | null>()
+    /** running and finished requests by node name */
+    private readonly requests = new Map<string, Promise<NodeDefinition | null>>()
+    private air = -1
 
-    constructor(private readonly defs: ReadonlyMap<string, NodeDefinition>, private readonly tiles: TileRegistry) {
+    constructor(private readonly source: NodeDefinitionSource, private readonly tiles: TileRegistry) {
         this.infos.push(this.compile(CONTENT_IGNORE, {
             name: "ignore", drawtype: "airlike", paramtype: "none", paramtype2: "none", light_source: 0, groups: null
         }))
-        this.airId = this.getId("air")
     }
 
-    /** internal id of a node, unknown nodes are rendered as a placeholder cube */
+    get airId(): number {
+        if (this.air < 0) {
+            this.air = this.getId("air")
+        }
+        return this.air
+    }
+
+    /**
+     * fetches the definitions of the given nodes and of the nodes they reference (liquid alternatives),
+     * every definition is only requested once
+     */
+    async ensure(names: Iterable<string>): Promise<void> {
+        const visited = new Set<string>()
+        const visit = async (name: string): Promise<void> => {
+            if (visited.has(name)) {
+                return
+            }
+            visited.add(name)
+            const def = await this.fetch(name)
+            if (def) {
+                // looked up by the mesher, even if no loaded mapblock contains them
+                const references = [def.liquid_alternative_source, def.liquid_alternative_flowing]
+                await Promise.all(references.map(reference => reference ? visit(reference) : undefined))
+            }
+        }
+        await Promise.all(Array.from(names, visit))
+    }
+
+    private fetch(name: string): Promise<NodeDefinition | null> {
+        let request = this.requests.get(name)
+        if (!request) {
+            request = this.source(name).then(def => {
+                this.defs.set(name, def)
+                return def
+            })
+            this.requests.set(name, request)
+        }
+        return request
+    }
+
+    /**
+     * internal id of a node, unknown nodes are rendered as a placeholder cube,
+     * the definition has to be fetched with `ensure` beforehand
+     */
     getId(name: string): number {
         let id = this.ids.get(name)
         if (id === undefined) {

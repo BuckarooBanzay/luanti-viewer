@@ -40,10 +40,10 @@ const definitions: NodeDefinition[] = [
     { ...light, name: "model", drawtype: "mesh", paramtype2: "facedir", tiles: ["a.png", "b.png"], mesh: "model.obj" }
 ]
 
-function setup() {
+async function setup() {
     const specs: TileSpec[] = []
     const keys = new Map<string, number>()
-    const nodes = new NodeRegistry(new Map(definitions.map(def => [def.name, def])), {
+    const nodes = new NodeRegistry(async name => definitions.find(def => def.name === name) ?? null, {
         getTile(spec) {
             const key = JSON.stringify(spec)
             if (!keys.has(key)) {
@@ -52,6 +52,7 @@ function setup() {
             return keys.get(key)!
         }
     })
+    await nodes.ensure(definitions.map(def => def.name))
     const neighborhood = createNeighborhood()
     // an empty, fully lit mapblock surrounded by air
     neighborhood.ids.fill(nodes.getId("air"))
@@ -98,8 +99,8 @@ function triangleNormals(buffer: MeshBuffer): string[] {
 }
 
 describe("solid nodes", () => {
-    it("draws the six faces of a single node, facing outwards", () => {
-        const { set, mesh } = setup()
+    it("draws the six faces of a single node, facing outwards", async () => {
+        const { set, mesh } = await setup()
         set(3, 4, 5, "stone")
         const stone = mesh().get("stone.png")!
         expect(quads(stone)).toBe(6)
@@ -110,8 +111,8 @@ describe("solid nodes", () => {
         expect(triangleNormals(stone).slice(0, 2)).toEqual(["0,1,0", "0,1,0"])
     })
 
-    it("skips faces between solid nodes", () => {
-        const { set, mesh } = setup()
+    it("skips faces between solid nodes", async () => {
+        const { set, mesh } = await setup()
         set(3, 4, 5, "stone")
         set(4, 4, 5, "stone")
         set(3, 5, 5, "grass")
@@ -123,8 +124,8 @@ describe("solid nodes", () => {
         expect(buffers.has("bottom.png")).toBe(false)
     })
 
-    it("draws nothing for enclosed nodes and keeps faces at the border of the scene", () => {
-        const { neighborhood, nodes, mesh } = setup()
+    it("draws nothing for enclosed nodes and keeps faces at the border of the scene", async () => {
+        const { neighborhood, nodes, mesh } = await setup()
         neighborhood.ids.fill(nodes.getId("stone"))
         expect(mesh().size).toBe(0)
 
@@ -141,8 +142,8 @@ describe("solid nodes", () => {
         expect(quads(mesh(lonely).get("stone.png"))).toBe(6 * 16 * 16)
     })
 
-    it("shades the faces and uses the light of the adjacent node", () => {
-        const { set, mesh, neighborhood } = setup()
+    it("shades the faces and uses the light of the adjacent node", async () => {
+        const { set, mesh, neighborhood } = await setup()
         set(3, 4, 5, "stone")
         neighborhood.param1[paddedIndex(3, 4, 4)] = 0x05 // dark in front of the node
         const stone = mesh().get("stone.png")!
@@ -154,45 +155,45 @@ describe("solid nodes", () => {
         expect(brightness.get("0,0,-1")!).toBeLessThan(brightness.get("0,-1,0")!)
     })
 
-    it("rotates the tiles by facedir", () => {
-        const frontNormal = (facedir: number) => {
-            const { set, mesh } = setup()
+    it("rotates the tiles by facedir", async () => {
+        const frontNormal = async (facedir: number) => {
+            const { set, mesh } = await setup()
             set(3, 4, 5, "furnace", facedir)
             return triangleNormals(mesh().get("front.png")!)[0]
         }
-        expect(frontNormal(0)).toBe("0,0,-1")
-        expect(frontNormal(1)).toBe("-1,0,0")
-        expect(frontNormal(2)).toBe("0,0,1")
-        expect(frontNormal(3)).toBe("1,0,0")
-        expect(frontNormal(4)).toBe("0,1,0") // top towards z+: lying on its back
+        expect(await frontNormal(0)).toBe("0,0,-1")
+        expect(await frontNormal(1)).toBe("-1,0,0")
+        expect(await frontNormal(2)).toBe("0,0,1")
+        expect(await frontNormal(3)).toBe("1,0,0")
+        expect(await frontNormal(4)).toBe("0,1,0") // top towards z+: lying on its back
     })
 })
 
 describe("glass and leaves", () => {
-    it("hides faces between glass nodes only", () => {
-        const { set, mesh } = setup()
+    it("hides faces between glass nodes only", async () => {
+        const { set, mesh } = await setup()
         set(3, 4, 5, "glass")
         set(4, 4, 5, "glass")
         set(3, 3, 5, "stone")
         expect(quads(mesh().get("glass.png"))).toBe(10)
     })
 
-    it("draws all faces of leaves", () => {
-        const { set, mesh } = setup()
+    it("draws all faces of leaves", async () => {
+        const { set, mesh } = await setup()
         set(3, 4, 5, "leaves")
         set(4, 4, 5, "leaves")
         expect(quads(mesh().get("leaves.png"))).toBe(12)
     })
 
-    it("merges the frames of connected framed glass", () => {
-        const single = setup()
+    it("merges the frames of connected framed glass", async () => {
+        const single = await setup()
         single.set(3, 4, 5, "framed")
         let buffers = single.mesh()
         // 12 frame edges with 6 faces each, 6 glass panes
         expect(quads(buffers.get("frame.png"))).toBe(72)
         expect(quads(buffers.get("detail.png"))).toBe(6)
 
-        const pair = setup()
+        const pair = await setup()
         pair.set(3, 4, 5, "framed")
         pair.set(4, 4, 5, "framed")
         buffers = pair.mesh()
@@ -203,8 +204,8 @@ describe("glass and leaves", () => {
 })
 
 describe("plants, torches, signs, fire", () => {
-    it("draws plants as crossed quads scaled by visual_scale", () => {
-        const { set, mesh } = setup()
+    it("draws plants as crossed quads scaled by visual_scale", async () => {
+        const { set, mesh } = await setup()
         set(3, 4, 5, "plant")
         const plant = mesh().get("plant.png")!
         expect(quads(plant)).toBe(2)
@@ -215,17 +216,17 @@ describe("plants, torches, signs, fire", () => {
         expect(plant.colors.every(c => Math.abs(c - 1) < 1e-6)).toBe(true)
     })
 
-    it("supports the plant styles of meshoptions", () => {
-        const count = (param2: number) => {
-            const { set, mesh } = setup()
+    it("supports the plant styles of meshoptions", async () => {
+        const count = async (param2: number) => {
+            const { set, mesh } = await setup()
             set(3, 4, 5, "wheat", param2)
             return quads(mesh().get("wheat.png"))
         }
-        expect([0, 1, 2, 3, 4].map(count)).toEqual([2, 2, 3, 4, 4])
+        expect(await Promise.all([0, 1, 2, 3, 4].map(count))).toEqual([2, 2, 3, 4, 4])
     })
 
-    it("draws the plant of rooted nodes above the node with its leveled height", () => {
-        const { set, mesh } = setup()
+    it("draws the plant of rooted nodes above the node with its leveled height", async () => {
+        const { set, mesh } = await setup()
         set(3, 4, 5, "kelp", 48)
         const buffers = mesh()
         expect(quads(buffers.get("sand.png"))).toBe(6)
@@ -237,39 +238,39 @@ describe("plants, torches, signs, fire", () => {
         expect(Math.max(...kelp.uvs)).toBe(3)
     })
 
-    it("selects the torch tile by the wall direction", () => {
-        const tile = (param2: number) => {
-            const { set, mesh } = setup()
+    it("selects the torch tile by the wall direction", async () => {
+        const tile = async (param2: number) => {
+            const { set, mesh } = await setup()
             set(3, 4, 5, "torch", param2)
             return [...mesh().keys()]
         }
-        expect(tile(0)).toEqual(["ceiling.png"])
-        expect(tile(1)).toEqual(["floor.png"])
-        expect(tile(2)).toEqual(["wall.png"])
-        expect(tile(5)).toEqual(["wall.png"])
+        expect(await tile(0)).toEqual(["ceiling.png"])
+        expect(await tile(1)).toEqual(["floor.png"])
+        expect(await tile(2)).toEqual(["wall.png"])
+        expect(await tile(5)).toEqual(["wall.png"])
     })
 
-    it("places signs flat on the wall", () => {
-        const plane = (param2: number) => {
-            const { set, mesh } = setup()
+    it("places signs flat on the wall", async () => {
+        const plane = async (param2: number) => {
+            const { set, mesh } = await setup()
             set(3, 4, 5, "sign", param2)
             return bounds(mesh().get("sign.png")!)
         }
-        expect(plane(2).min[0]).toBe(3.4375) // x+
-        expect(plane(2).max[0]).toBe(3.4375)
-        expect(plane(3).max[0]).toBe(2.5625) // x-
-        expect(plane(0).min[1]).toBe(4.4375) // ceiling
-        expect(plane(1).max[1]).toBe(3.5625) // floor
-        expect(plane(4).min[2]).toBe(5.4375) // z+
-        expect(plane(5).max[2]).toBe(4.5625) // z-
+        expect((await plane(2)).min[0]).toBe(3.4375) // x+
+        expect((await plane(2)).max[0]).toBe(3.4375)
+        expect((await plane(3)).max[0]).toBe(2.5625) // x-
+        expect((await plane(0)).min[1]).toBe(4.4375) // ceiling
+        expect((await plane(1)).max[1]).toBe(3.5625) // floor
+        expect((await plane(4)).min[2]).toBe(5.4375) // z+
+        expect((await plane(5)).max[2]).toBe(4.5625) // z-
     })
 
-    it("draws fire depending on the surrounding nodes", () => {
-        const free = setup()
+    it("draws fire depending on the surrounding nodes", async () => {
+        const free = await setup()
         free.set(3, 4, 5, "fire")
         expect(quads(free.mesh().get("fire.png"))).toBe(6)
 
-        const wall = setup()
+        const wall = await setup()
         wall.set(3, 4, 5, "fire")
         wall.set(4, 4, 5, "stone")
         expect(quads(wall.mesh().get("fire.png"))).toBe(1)
@@ -277,8 +278,8 @@ describe("plants, torches, signs, fire", () => {
 })
 
 describe("rails and fences", () => {
-    const railTiles = (rails: [number, number, number][]) => {
-        const { set, mesh } = setup()
+    const railTiles = async (rails: [number, number, number][]) => {
+        const { set, mesh } = await setup()
         set(3, 4, 5, "rail")
         rails.forEach(([x, y, z]) => set(x, y, z, "rail"))
         // tile of the quad that covers the node at 3,4,5
@@ -293,16 +294,16 @@ describe("rails and fences", () => {
         return null
     }
 
-    it("selects the rail tile by the connected neighbors", () => {
-        expect(railTiles([])).toBe("straight.png")
-        expect(railTiles([[3, 4, 6]])).toBe("straight.png")
-        expect(railTiles([[3, 4, 6], [4, 4, 5]])).toBe("curved.png")
-        expect(railTiles([[3, 4, 6], [4, 4, 5], [2, 4, 5]])).toBe("junction.png")
-        expect(railTiles([[3, 4, 6], [3, 4, 4], [4, 4, 5], [2, 4, 5]])).toBe("cross.png")
+    it("selects the rail tile by the connected neighbors", async () => {
+        expect(await railTiles([])).toBe("straight.png")
+        expect(await railTiles([[3, 4, 6]])).toBe("straight.png")
+        expect(await railTiles([[3, 4, 6], [4, 4, 5]])).toBe("curved.png")
+        expect(await railTiles([[3, 4, 6], [4, 4, 5], [2, 4, 5]])).toBe("junction.png")
+        expect(await railTiles([[3, 4, 6], [3, 4, 4], [4, 4, 5], [2, 4, 5]])).toBe("cross.png")
     })
 
-    it("raises rails towards a rail one node above", () => {
-        const { set, mesh } = setup()
+    it("raises rails towards a rail one node above", async () => {
+        const { set, mesh } = await setup()
         set(3, 4, 5, "rail")
         set(4, 5, 5, "rail")
         const buffer = mesh().get("straight.png")!
@@ -313,8 +314,8 @@ describe("rails and fences", () => {
         high.forEach(i => expect(quad[i * 3]).toBe(3.5))
     })
 
-    it("connects legacy fences towards +x and +z", () => {
-        const { set, mesh } = setup()
+    it("connects legacy fences towards +x and +z", async () => {
+        const { set, mesh } = await setup()
         set(3, 4, 5, "oldfence")
         expect(quads(mesh().get("wood.png"))).toBe(6)
         set(4, 4, 5, "oldfence")
@@ -325,8 +326,8 @@ describe("rails and fences", () => {
 })
 
 describe("nodeboxes", () => {
-    it("draws fixed boxes with texture coordinates aligned to the node", () => {
-        const { set, mesh } = setup()
+    it("draws fixed boxes with texture coordinates aligned to the node", async () => {
+        const { set, mesh } = await setup()
         set(3, 4, 5, "slab")
         const slab = mesh().get("wood.png")!
         expect(quads(slab)).toBe(6)
@@ -335,24 +336,24 @@ describe("nodeboxes", () => {
         expect(slab.uvs.filter((_, i) => i % 2 === 1).some(v => v === 0.5)).toBe(true)
     })
 
-    it("hides faces at the node boundary that touch solid nodes", () => {
-        const { set, mesh } = setup()
+    it("hides faces at the node boundary that touch solid nodes", async () => {
+        const { set, mesh } = await setup()
         set(3, 4, 5, "slab")
         set(3, 3, 5, "stone")
         set(4, 4, 5, "stone")
         expect(quads(mesh().get("wood.png"))).toBe(4)
     })
 
-    it("rotates the boxes by facedir", () => {
-        const { set, mesh } = setup()
+    it("rotates the boxes by facedir", async () => {
+        const { set, mesh } = await setup()
         set(3, 4, 5, "slab", 20) // upside down
         expect(bounds(mesh().get("wood.png")!)).toEqual({ min: [2.5, 4, 4.5], max: [3.5, 4.5, 5.5] })
         set(3, 4, 5, "slab", 12) // bottom towards x-
         expect(bounds(mesh().get("wood.png")!)).toEqual({ min: [2.5, 3.5, 4.5], max: [3, 4.5, 5.5] })
     })
 
-    it("adds the boxes of connected neighbors", () => {
-        const { set, mesh } = setup()
+    it("adds the boxes of connected neighbors", async () => {
+        const { set, mesh } = await setup()
         set(3, 4, 5, "fence")
         expect(quads(mesh().get("wood.png"))).toBe(6)
         set(4, 4, 5, "fence") // group
@@ -365,24 +366,24 @@ describe("nodeboxes", () => {
         expect(bounds(fence).max[2]).toBe(5.125)
     })
 
-    it("selects the box of wallmounted nodeboxes by the wall direction", () => {
-        const box = (param2: number) => {
-            const { set, mesh } = setup()
+    it("selects the box of wallmounted nodeboxes by the wall direction", async () => {
+        const box = async (param2: number) => {
+            const { set, mesh } = await setup()
             set(0, 0, 0, "wallsign", param2)
             return bounds(mesh().get("sign.png")!)
         }
-        expect(box(0)).toEqual({ min: [-0.4, 0.4, -0.3], max: [0.4, 0.5, 0.3] })
-        expect(box(1)).toEqual({ min: [-0.4, -0.5, -0.3], max: [0.4, -0.4, 0.3] })
-        expect(box(3)).toEqual({ min: [-0.5, -0.3, -0.4], max: [-0.4, 0.3, 0.4] })
-        expect(box(2)).toEqual({ min: [0.4, -0.3, -0.4], max: [0.5, 0.3, 0.4] })
-        expect(box(4)).toEqual({ min: [-0.4, -0.3, 0.4], max: [0.4, 0.3, 0.5] })
-        expect(box(5)).toEqual({ min: [-0.4, -0.3, -0.5], max: [0.4, 0.3, -0.4] })
+        expect(await box(0)).toEqual({ min: [-0.4, 0.4, -0.3], max: [0.4, 0.5, 0.3] })
+        expect(await box(1)).toEqual({ min: [-0.4, -0.5, -0.3], max: [0.4, -0.4, 0.3] })
+        expect(await box(3)).toEqual({ min: [-0.5, -0.3, -0.4], max: [-0.4, 0.3, 0.4] })
+        expect(await box(2)).toEqual({ min: [0.4, -0.3, -0.4], max: [0.5, 0.3, 0.4] })
+        expect(await box(4)).toEqual({ min: [-0.4, -0.3, 0.4], max: [0.4, 0.3, 0.5] })
+        expect(await box(5)).toEqual({ min: [-0.4, -0.3, -0.5], max: [0.4, 0.3, -0.4] })
     })
 })
 
 describe("liquids", () => {
-    it("draws liquid sources as cubes without faces between them", () => {
-        const { set, mesh } = setup()
+    it("draws liquid sources as cubes without faces between them", async () => {
+        const { set, mesh } = await setup()
         set(3, 4, 5, "water_source")
         set(4, 4, 5, "water_source")
         set(3, 3, 5, "stone")
@@ -391,8 +392,8 @@ describe("liquids", () => {
         expect(quads(mesh().get("water.png"))).toBe(8)
     })
 
-    it("lowers the surface of flowing liquids", () => {
-        const { set, mesh } = setup()
+    it("lowers the surface of flowing liquids", async () => {
+        const { set, mesh } = await setup()
         set(3, 4, 5, "water_flowing", 7)
         const buffers = mesh()
         const top = buffers.get("flow_top.png")!
@@ -404,8 +405,8 @@ describe("liquids", () => {
         expect(bounds(side).max[1]).toBeCloseTo(4 - 0.5 + 0.02)
     })
 
-    it("connects flowing liquids to adjacent sources", () => {
-        const { set, mesh } = setup()
+    it("connects flowing liquids to adjacent sources", async () => {
+        const { set, mesh } = await setup()
         for (let x = 2; x <= 4; x++) {
             for (let z = 4; z <= 6; z++) {
                 set(x, 3, z, "stone")
@@ -443,14 +444,14 @@ describe("meshes", () => {
         }]
     }
 
-    it("skips nodes without a loaded model", () => {
-        const { set, mesh } = setup()
+    it("skips nodes without a loaded model", async () => {
+        const { set, mesh } = await setup()
         set(3, 4, 5, "model")
         expect(mesh().size).toBe(0)
     })
 
-    it("assigns one tile per buffer and rotates the model by facedir", () => {
-        const { set, mesh, nodes } = setup()
+    it("assigns one tile per buffer and rotates the model by facedir", async () => {
+        const { set, mesh, nodes } = await setup()
         set(3, 4, 5, "model")
         nodes.infos[nodes.getId("model")]!.model = triangle
         let buffers = mesh()
