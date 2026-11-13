@@ -1,0 +1,48 @@
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>luanti-viewer demo</title>
+    <link rel="icon" href="data:,">
+    <style>
+        html, body {
+            margin: 0;
+            height: 100%;
+            background: #1b1d21;
+            font: 13px/1.4 system-ui, sans-serif;
+        }
+        #view {
+            width: 100%;
+            height: 100%;
+        }
+        nav {
+            position: absolute;
+            top: 8px;
+            left: 8px;
+            z-index: 1;
+            display: flex;
+            gap: 4px;
+        }
+        nav a {
+            padding: 4px 10px;
+            border-radius: 4px;
+            color: #fff;
+            background: rgba(0, 0, 0, .55);
+            text-decoration: none;
+        }
+        nav a.active {
+            background: rgba(255, 255, 255, .9);
+            color: #000;
+        }
+    </style>
+</head>
+<body>
+    <nav>
+        <a href="./" id="link-export">exported map</a>
+        <a href="./?scene=showcase" id="link-showcase">drawtype showcase</a>
+    </nav>
+    <div id="view"></div>
+    <script type="module" src="./main.ts"></script>
+</body>
+</html>

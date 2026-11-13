@@ -14,5 +14,17 @@ services:
     - "./worldmods/export_mod/test/minetest.conf:/minetest.conf"
     - "./worldmods/export_mod/testschematic.we:/root/.minetest/worlds/world/schems/testschematic.we"
 
+ # demo app: renders the scene from the "export" directory, http://localhost:5173
+ demo:
+  image: node:24.21.0
+  working_dir: /app
+  command: ["sh", "-c", "npm ci && npm run dev -- --host 0.0.0.0"]
+  ports:
+    - "5173:5173"
+  volumes:
+    - ".:/app"
+    - "demo_node_modules:/app/node_modules"
+
 volumes:
   world_data: {}
+  demo_node_modules: {}
