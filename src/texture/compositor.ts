@@ -1,4 +1,4 @@
-import { parseColorString, parseTexture, parseTransform, splitEscaped, unescape, type TexturePart } from "./parser"
+import { parseColorString, parseTexture, parseTransform, splitEscaped, unescape, type TexturePart } from "./parser.js"
 
 /** uncompressed image with straight (not premultiplied) alpha, rows from top to bottom */
 export type RgbaImage = {

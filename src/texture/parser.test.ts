@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest"
-import { parseColorString, parseTexture, parseTransform, splitEscaped } from "./parser"
+import { parseColorString, parseTexture, parseTransform, splitEscaped } from "./parser.js"
 
 describe("parseTexture", () => {
     it("parses a plain file name", () => {

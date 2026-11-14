@@ -1,4 +1,4 @@
-import { computeNormals, type Model, type ModelBuffer } from "./model"
+import { computeNormals, type Model, type ModelBuffer } from "./model.js"
 
 /** column-major 4x4 matrix */
 type Mat4 = number[]

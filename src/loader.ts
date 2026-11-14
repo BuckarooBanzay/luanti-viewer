@@ -1,4 +1,4 @@
-import type { MapblockPosition } from "./types"
+import type { MapblockPosition } from "./types.js"
 
 /** meshes are removed once they are this many mapblocks beyond the view range (avoids thrashing at the border) */
 export const UNLOAD_MARGIN = 2

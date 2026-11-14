@@ -1,8 +1,8 @@
 import { describe, expect, it } from "vitest"
-import { splitFrames } from "./materials"
-import { MeshBuffer } from "./mesh/mesher"
-import { createImage } from "./texture/compositor"
-import { createGeometry } from "./view"
+import { splitFrames } from "./materials.js"
+import { MeshBuffer } from "./mesh/mesher.js"
+import { createImage } from "./texture/compositor.js"
+import { createGeometry } from "./view.js"
 
 describe("createGeometry", () => {
     it("converts the left-handed output of the mesher for three.js", () => {

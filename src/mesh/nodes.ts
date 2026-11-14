@@ -1,5 +1,5 @@
-import type { AlphaMode, Box, BoxList, Color, DrawType, NodeDefinition, ParamType2, Tile, TileAnimation } from "../types"
-import type { Model } from "../models/model"
+import type { AlphaMode, Box, BoxList, Color, DrawType, NodeDefinition, ParamType2, Tile, TileAnimation } from "../types.js"
+import type { Model } from "../models/model.js"
 
 /** everything needed to create a material for a node face */
 export type TileSpec = {

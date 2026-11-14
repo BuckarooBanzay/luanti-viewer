@@ -1,24 +1,61 @@
 {
-  "name": "luanti-viewer",
+  "name": "@buckaroobanzay/luanti-viewer",
   "version": "1.0.0",
-  "description": "",
+  "description": "Browser-based 3D viewer for Luanti (Minetest) maps, built on three.js",
+  "keywords": [
+    "luanti",
+    "minetest",
+    "three",
+    "threejs",
+    "voxel",
+    "viewer"
+  ],
   "license": "ISC",
   "author": "",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/BuckarooBanzay/luanti-viewer.git"
+  },
+  "homepage": "https://github.com/BuckarooBanzay/luanti-viewer#readme",
+  "bugs": {
+    "url": "https://github.com/BuckarooBanzay/luanti-viewer/issues"
+  },
   "type": "module",
+  "main": "./dist/index.js",
+  "module": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    },
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "dist",
+    "!dist/**/*.test.*"
+  ],
+  "sideEffects": false,
+  "publishConfig": {
+    "registry": "https://npm.pkg.github.com"
+  },
   "scripts": {
+    "build": "vite build && tsc -p tsconfig.build.json",
+    "prepack": "npm run build",
     "test": "vitest run",
     "typecheck": "tsc --noEmit",
     "dev": "vite --config demo/vite.config.ts",
     "build:demo": "vite build --config demo/vite.config.ts"
   },
+  "peerDependencies": {
+    "three": "^0.187.0"
+  },
   "devDependencies": {
     "@types/node": "^26.6.6",
     "@types/three": "^0.187.0",
+    "three": "^0.187.0",
     "typescript": "^7.0.2",
     "vite": "^8.3.8",
     "vitest": "^5.1.0"
-  },
-  "dependencies": {
-    "three": "^0.187.0"
   }
 }

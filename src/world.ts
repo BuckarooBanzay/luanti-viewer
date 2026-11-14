@@ -1,7 +1,7 @@
-import { MAPBLOCK_SIZE, MAPBLOCK_VOLUME, type ParsedMapblock } from "./mapblock"
-import { PADDED_SIZE, type Neighborhood } from "./mesh/mesher"
-import { CONTENT_IGNORE, type NodeRegistry } from "./mesh/nodes"
-import type { MapblockPosition } from "./types"
+import { MAPBLOCK_SIZE, MAPBLOCK_VOLUME, type ParsedMapblock } from "./mapblock.js"
+import { PADDED_SIZE, type Neighborhood } from "./mesh/mesher.js"
+import { CONTENT_IGNORE, type NodeRegistry } from "./mesh/nodes.js"
+import type { MapblockPosition } from "./types.js"
 
 type Block = {
     pos: MapblockPosition

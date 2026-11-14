@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest"
-import { MapblockLoader, type Bounds } from "./loader"
-import type { MapblockPosition } from "./types"
+import { MapblockLoader, type Bounds } from "./loader.js"
+import type { MapblockPosition } from "./types.js"
 
 const key = (pos: MapblockPosition) => `${pos.x},${pos.y},${pos.z}`
 const flush = () => new Promise<void>(resolve => setTimeout(resolve, 0))

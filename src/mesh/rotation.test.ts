@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest"
-import { applyMat3, facedirMatrix, FACEDIR_TILES, WALLMOUNTED_TO_FACEDIR, type Mat3 } from "./rotation"
+import { applyMat3, facedirMatrix, FACEDIR_TILES, WALLMOUNTED_TO_FACEDIR, type Mat3 } from "./rotation.js"
 
 const DIRECTIONS = [[1, 0, 0], [-1, 0, 0], [0, 1, 0], [0, -1, 0], [0, 0, 1], [0, 0, -1]]
 const dirIndex = (d: number[]) => (d[0]! + 2 * d[1]! + 3 * d[2]!) & 7

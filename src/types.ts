@@ -1,4 +1,4 @@
-import type { ParsedMapblock } from "./mapblock"
+import type { ParsedMapblock } from "./mapblock.js"
 
 /** all drawtypes of the luanti engine */
 export type DrawType =

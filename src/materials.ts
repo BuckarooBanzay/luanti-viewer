@@ -2,8 +2,8 @@ import {
     DataTexture, DoubleSide, FrontSide, MeshBasicMaterial, NearestFilter, RepeatWrapping, RGBAFormat, SRGBColorSpace,
     UnsignedByteType, type Material, type Texture
 } from "three"
-import type { TileRegistry, TileSpec } from "./mesh/nodes"
-import { cropImage, type RgbaImage, type TextureCompositor } from "./texture/compositor"
+import type { TileRegistry, TileSpec } from "./mesh/nodes.js"
+import { cropImage, type RgbaImage, type TextureCompositor } from "./texture/compositor.js"
 
 type Entry = {
     spec: TileSpec

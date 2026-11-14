@@ -6,12 +6,12 @@
  * of the engine: left-handed coordinates, one unit per node, texture origin in
  * the top left corner. The viewer converts the result for three.js.
  */
-import type { Box } from "../types"
-import { CONTENT_IGNORE, repairBox, type NodeInfo, type NodeRegistry } from "./nodes"
+import type { Box } from "../types.js"
+import { CONTENT_IGNORE, repairBox, type NodeInfo, type NodeRegistry } from "./nodes.js"
 import {
     applyMat3, facedirMatrix, FACEDIR_TILES, multiply, rotationXY, rotationXZ, rotationYZ, WALLMOUNTED_TO_FACEDIR,
     type Mat3
-} from "./rotation"
+} from "./rotation.js"
 
 /** edge length of the padded node arrays: a mapblock plus one node on each side */
 export const PADDED_SIZE = 18

@@ -1,9 +1,9 @@
 import { existsSync, readFileSync } from "node:fs"
 import { join } from "node:path"
 import { describe, expect, it } from "vitest"
-import { parseB3d } from "./b3d"
-import type { ModelBuffer } from "./model"
-import { parseObj } from "./obj"
+import { parseB3d } from "./b3d.js"
+import type { ModelBuffer } from "./model.js"
+import { parseObj } from "./obj.js"
 
 /** geometric normal of a triangle by the convention of the engine: (b - a) x (c - a) */
 function triangleNormal(buffer: ModelBuffer, triangle: number): number[] {

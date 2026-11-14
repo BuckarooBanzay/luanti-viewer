@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest"
-import { createImage, TextureCompositor, transformImage, type RgbaImage } from "./compositor"
+import { createImage, TextureCompositor, transformImage, type RgbaImage } from "./compositor.js"
 
 /** builds an image from rows of single characters, see the palette */
 function image(...rows: string[]): RgbaImage {

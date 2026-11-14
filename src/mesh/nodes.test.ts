@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest"
-import type { NodeDefinition } from "../types"
-import { NodeRegistry } from "./nodes"
+import type { NodeDefinition } from "../types.js"
+import { NodeRegistry } from "./nodes.js"
 
 const base = { paramtype: "light", paramtype2: "none", light_source: 0, groups: null } as const
 

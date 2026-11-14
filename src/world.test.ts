@@ -1,8 +1,8 @@
 import { describe, expect, it } from "vitest"
-import { MAPBLOCK_VOLUME, ParsedMapblock, getNodeIndex } from "./mapblock"
-import { createNeighborhood, paddedIndex } from "./mesh/mesher"
-import { CONTENT_IGNORE, NodeRegistry } from "./mesh/nodes"
-import { World } from "./world"
+import { MAPBLOCK_VOLUME, ParsedMapblock, getNodeIndex } from "./mapblock.js"
+import { createNeighborhood, paddedIndex } from "./mesh/mesher.js"
+import { CONTENT_IGNORE, NodeRegistry } from "./mesh/nodes.js"
+import { World } from "./world.js"
 
 function createBlock(names: string[], fill: (x: number, y: number, z: number) => [id: number, param1: number, param2: number]) {
     const ids = new Uint16Array(MAPBLOCK_VOLUME), param1 = new Uint8Array(MAPBLOCK_VOLUME), param2 = new Uint8Array(MAPBLOCK_VOLUME)

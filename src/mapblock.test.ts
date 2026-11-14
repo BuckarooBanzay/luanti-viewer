@@ -8,7 +8,7 @@ import {
     MAPDATA_LENGTH,
     MapblockParseError,
     parseMapblock
-} from "./mapblock"
+} from "./mapblock.js"
 
 const fixture = readFileSync(join(__dirname, "testdata/mapblock_6_0_0.json"), "utf-8")
 

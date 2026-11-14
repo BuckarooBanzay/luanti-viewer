@@ -1,4 +1,4 @@
-import { computeNormals, type Model, type ModelBuffer } from "./model"
+import { computeNormals, type Model, type ModelBuffer } from "./model.js"
 
 type Material = {
     name: string

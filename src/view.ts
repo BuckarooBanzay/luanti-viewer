@@ -3,17 +3,17 @@ import {
     Vector3, WebGLRenderer
 } from "three"
 import { PointerLockControls } from "three/examples/jsm/controls/PointerLockControls.js"
-import { MapblockLoader, UNLOAD_MARGIN } from "./loader"
-import { MAPBLOCK_SIZE, type ParsedMapblock } from "./mapblock"
-import { MaterialManager } from "./materials"
-import { createNeighborhood, MapblockMesher, type MeshBuffer } from "./mesh/mesher"
-import { NodeRegistry } from "./mesh/nodes"
-import { parseB3d } from "./models/b3d"
-import type { Model } from "./models/model"
-import { parseObj } from "./models/obj"
-import { TextureCompositor, type RgbaImage } from "./texture/compositor"
-import type { MapblockPosition, ViewerCamera, ViewerOptions } from "./types"
-import { World } from "./world"
+import { MapblockLoader, UNLOAD_MARGIN } from "./loader.js"
+import { MAPBLOCK_SIZE, type ParsedMapblock } from "./mapblock.js"
+import { MaterialManager } from "./materials.js"
+import { createNeighborhood, MapblockMesher, type MeshBuffer } from "./mesh/mesher.js"
+import { NodeRegistry } from "./mesh/nodes.js"
+import { parseB3d } from "./models/b3d.js"
+import type { Model } from "./models/model.js"
+import { parseObj } from "./models/obj.js"
+import { TextureCompositor, type RgbaImage } from "./texture/compositor.js"
+import type { MapblockPosition, ViewerCamera, ViewerOptions } from "./types.js"
+import { World } from "./world.js"
 
 const SKY_COLOR = 0x8cbafa
 /** parallel getMapblock / getMedia requests */

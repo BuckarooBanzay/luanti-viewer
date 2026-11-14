@@ -1,6 +1,6 @@
-export { createView } from "./view"
+export { createView } from "./view.js"
 export {
     parseMapblock, ParsedMapblock, MapblockParseError, getNodeIndex, MAPBLOCK_SIZE, MAPBLOCK_VOLUME,
     type Node, type RawMapblock
-} from "./mapblock"
-export type * from "./types"
+} from "./mapblock.js"
+export type * from "./types.js"

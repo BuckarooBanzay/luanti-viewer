@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest"
-import type { NodeDefinition } from "../types"
-import { createNeighborhood, MapblockMesher, MeshBuffer, paddedIndex, type Neighborhood } from "./mesher"
-import { CONTENT_IGNORE, NodeRegistry, type TileSpec } from "./nodes"
+import type { NodeDefinition } from "../types.js"
+import { createNeighborhood, MapblockMesher, MeshBuffer, paddedIndex, type Neighborhood } from "./mesher.js"
+import { CONTENT_IGNORE, NodeRegistry, type TileSpec } from "./nodes.js"
 
 const base = { paramtype: "none", paramtype2: "none", light_source: 0, groups: null } as const
 const light = { ...base, paramtype: "light" } as const
