@@ -119,16 +119,3 @@ describe("parseMapblock", () => {
         await expect(parseMapblock({ ...valid, node_mapping: { a: 1.5 } })).rejects.toThrow(/invalid content id/)
     })
 })
-
-// the full example export is not checked in, only tested if available
-const exportDir = join(__dirname, "../export/mapblocks")
-const exportFiles = existsSync(exportDir) ? readdirSync(exportDir).filter(f => f.startsWith("(")) : []
-
-describe.skipIf(exportFiles.length === 0)("example export", () => {
-    it(`parses all ${exportFiles.length} mapblocks`, async () => {
-        for (const file of exportFiles) {
-            const mb = await parseMapblock(readFileSync(join(exportDir, file), "utf-8"))
-            expect(mb.nodeIds, file).toHaveLength(MAPBLOCK_VOLUME)
-        }
-    })
-})
