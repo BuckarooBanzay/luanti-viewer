@@ -183,6 +183,8 @@ export type ViewerOptions = {
     camera?: ViewerCamera
     /** show a widget that displays the current fps, defaults to false */
     showFPS?: boolean|null
+    /** initial time of day, see `Viewer.setTimeOfDay`, defaults to 0.5 (noon) */
+    timeOfDay?: number|null
 
     /** callbacks for changes in the viewer */
     events?: {
@@ -192,4 +194,13 @@ export type ViewerOptions = {
          */
         camera?(camera: ViewerCamera): void
     }
+}
+
+/** handle of a view, returned by `createView` */
+export type Viewer = {
+    /**
+     * set time of day, range from 0 to 1 (0 = midnight, 0.5 = noon, as in the engine),
+     * sets the lighting of the scene accordingly
+     */
+    setTimeOfDay(tod: number): void
 }

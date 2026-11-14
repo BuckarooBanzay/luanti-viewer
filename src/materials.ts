@@ -63,6 +63,11 @@ export class MaterialManager implements TileRegistry {
     private readonly ids = new Map<string, number>()
     private readonly animated: Entry[] = []
     private pending = 0
+    /**
+     * shared by the shaders of all materials: 1 = full daylight, 0 = only the night light (artificial light)
+     * is left, the vertices are blended between their day color and their `nightFactor` attribute
+     */
+    readonly dayNightRatio = { value: 1 }
     /** called whenever a texture finished loading */
     onTextureLoaded: (() => void) | null = null
 
@@ -95,6 +100,13 @@ export class MaterialManager implements TileRegistry {
             // hidden until the texture is available
             visible: false
         })
+        material.onBeforeCompile = shader => {
+            shader.uniforms.dayNightRatio = this.dayNightRatio
+            // the light is blended in gamma space like the brightness of the mesher, the vertex colors are linear
+            shader.vertexShader = "attribute float nightFactor;\nuniform float dayNightRatio;\n"
+                + shader.vertexShader.replace("#include <color_vertex>", "#include <color_vertex>\n"
+                    + "\tvColor.rgb *= pow(mix(nightFactor, 1.0, dayNightRatio), 2.2);")
+        }
         if (spec.alpha === "clip") {
             material.alphaTest = 0.5
         } else if (spec.alpha === "blend") {

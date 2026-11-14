@@ -31,6 +31,15 @@
             background: rgba(0, 0, 0, .55);
             text-decoration: none;
         }
+        nav label {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            padding: 4px 10px;
+            border-radius: 4px;
+            color: #fff;
+            background: rgba(0, 0, 0, .55);
+        }
         nav a.active {
             background: rgba(255, 255, 255, .9);
             color: #000;
@@ -41,6 +50,7 @@
     <nav>
         <a href="./" id="link-export">exported map</a>
         <a href="./?scene=showcase" id="link-showcase">drawtype showcase</a>
+        <label>time of day <input type="range" id="time" min="0" max="1" step="0.005" value="0.5"></label>
     </nav>
     <div id="view"></div>
     <script type="module" src="./main.ts"></script>

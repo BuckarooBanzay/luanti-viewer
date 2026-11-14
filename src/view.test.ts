@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest"
 import { splitFrames } from "./materials.js"
 import { MeshBuffer } from "./mesh/mesher.js"
 import { createImage } from "./texture/compositor.js"
-import { createGeometry } from "./view.js"
+import { createGeometry, timeToDayNightRatio } from "./view.js"
 
 describe("createGeometry", () => {
     it("converts the left-handed output of the mesher for three.js", () => {
@@ -11,6 +11,7 @@ describe("createGeometry", () => {
         buffer.positions.push(-0.5, 0.5, 0.5, 0.5, 0.5, 0.5, 0.5, 0.5, -0.5, -0.5, 0.5, -0.5)
         buffer.uvs.push(0, 0, 1, 0, 1, 1, 0, 1)
         buffer.colors.push(...new Array(12).fill(1))
+        buffer.nightFactors.push(1, 0.5, 0, 0)
         buffer.indices.push(0, 1, 2, 2, 3, 0)
 
         const geometry = createGeometry(buffer)
@@ -27,6 +28,25 @@ describe("createGeometry", () => {
             expect(u[2]! * v[0]! - u[0]! * v[2]!).toBeGreaterThan(0)
         }
         expect(geometry.boundingSphere!.radius).toBeCloseTo(Math.SQRT1_2)
+        const nightFactor = geometry.getAttribute("nightFactor")
+        expect(nightFactor.normalized).toBe(true)
+        expect([...nightFactor.array]).toEqual([255, 128, 0, 0])
+    })
+})
+
+describe("timeToDayNightRatio", () => {
+    it("is bright at day, dark at night and symmetric around noon", () => {
+        expect(timeToDayNightRatio(0.5)).toBe(1)
+        expect(timeToDayNightRatio(0)).toBeCloseTo(0.175)
+        expect(timeToDayNightRatio(1)).toBeCloseTo(0.175)
+        expect(timeToDayNightRatio(0.3)).toBe(1)
+        const dawn = timeToDayNightRatio(5250 / 24000)
+        expect(dawn).toBeGreaterThan(0.35)
+        expect(dawn).toBeLessThan(0.5)
+        expect(timeToDayNightRatio(1 - 5250 / 24000)).toBeCloseTo(dawn)
+        // out of range values wrap around
+        expect(timeToDayNightRatio(1.5)).toBe(1)
+        expect(timeToDayNightRatio(NaN)).toBe(1)
     })
 })
 

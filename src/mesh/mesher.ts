@@ -48,8 +48,10 @@ export class MeshBuffer {
     positions: number[] = []
     /** uv per vertex, v = 0 is the top of the texture */
     uvs: number[] = []
-    /** linear rgb per vertex */
+    /** linear rgb per vertex at full daylight */
     colors: number[] = []
+    /** brightness at night relative to the one at day (0..1, gamma space) per vertex */
+    nightFactors: number[] = []
     indices: number[] = []
 
     get vertexCount(): number {
@@ -111,6 +113,25 @@ export const LIGHT_CURVE: readonly number[] = (() => {
 
 /** minimum brightness, keeps unlit caves visible */
 const AMBIENT = 0.1
+
+/** combines two packed light values (day | night << 4), each bank on its own */
+function maxLight(a: number, b: number): number {
+    return Math.max(a & 0x0f, b & 0x0f) | Math.max(a & 0xf0, b & 0xf0)
+}
+
+/**
+ * brightness at night relative to the one at day (gamma space) per packed light value,
+ * independent of the face shading as that is a common factor
+ */
+export const NIGHT_FACTOR: readonly number[] = (() => {
+    const factors: number[] = []
+    for (let light = 0; light < 256; light++) {
+        const day = AMBIENT + (1 - AMBIENT) * LIGHT_CURVE[light & 0x0f]!
+        const night = AMBIENT + (1 - AMBIENT) * LIGHT_CURVE[light >> 4]!
+        factors.push(Math.min(night / day, 1))
+    }
+    return factors
+})()
 
 /** see applyFacesShading in the engine */
 function faceShade(nx: number, ny: number, nz: number): number {
@@ -262,7 +283,7 @@ export class MapblockMesher {
     private ox = 0
     private oy = 0
     private oz = 0
-    /** interior light of the node (0..15) */
+    /** interior light of the node, packed: day | night << 4 */
     private light = 0
     /** position of the mapblock in nodes */
     private blockX = 0
@@ -351,19 +372,24 @@ export class MapblockMesher {
 
     // ---- light ----
 
-    /** light of a node from its param1, full light where no mapblock is loaded */
+    /**
+     * light of a node from its param1 (packed: day | night << 4), full light where no mapblock is loaded,
+     * the day light is never darker than the night light
+     */
     private interiorLight(index: number): number {
         const id = this.ids[index]!
         if (id === CONTENT_IGNORE) {
-            return 15
+            return 0xff
         }
         const info = this.infos[id]!
-        let light = 0
+        let day = 0, night = 0
         if (info.lightPropagates) {
             const p1 = this.param1[index]!
-            light = Math.max(p1 & 0x0f, p1 >> 4)
+            day = p1 & 0x0f
+            night = p1 >> 4
         }
-        return Math.max(light, info.lightSource)
+        night = Math.max(night, info.lightSource)
+        return Math.max(day, night) | night << 4
     }
 
     /** light for nodes that are drawn with a single light value */
@@ -372,16 +398,16 @@ export class MapblockMesher {
             return this.interiorLight(index)
         }
         // param1 is not a light value, use the brightest neighbor instead of rendering the node black
-        let light = info.lightSource
+        let light = info.lightSource * 0x11
         for (const offset of FACE_OFFSETS) {
-            light = Math.max(light, this.interiorLight(index + offset))
+            light = maxLight(light, this.interiorLight(index + offset))
         }
         return light
     }
 
-    /** linear vertex color factor for a light level and a face normal */
+    /** linear vertex color factor at day for a packed light value and a face normal */
     private brightness(light: number, nx: number, ny: number, nz: number): number {
-        let b = AMBIENT + (1 - AMBIENT) * LIGHT_CURVE[light]!
+        let b = AMBIENT + (1 - AMBIENT) * LIGHT_CURVE[light & 0x0f]!
         if (this.info.lightSource === 0) {
             b *= faceShade(nx, ny, nz)
         }
@@ -401,17 +427,19 @@ export class MapblockMesher {
     }
 
     /** adds a quad, the vertices are relative to the center of the current node */
-    private quad(tile: number, v: ArrayLike<number>, uv: ArrayLike<number>, brightness: number): void {
+    private quad(tile: number, v: ArrayLike<number>, uv: ArrayLike<number>, brightness: number, light: number): void {
         if (tile < 0) {
             return
         }
         const buffer = this.buffer(tile)
         const base = buffer.positions.length / 3
         const [r, g, b] = this.info.color
+        const nightFactor = NIGHT_FACTOR[light]!
         for (let k = 0; k < 4; k++) {
             buffer.positions.push(v[k * 3]! + this.ox, v[k * 3 + 1]! + this.oy, v[k * 3 + 2]! + this.oz)
             buffer.uvs.push(uv[k * 2]!, uv[k * 2 + 1]!)
             buffer.colors.push(brightness * r, brightness * g, brightness * b)
+            buffer.nightFactors.push(nightFactor)
         }
         buffer.indices.push(base, base + 1, base + 2, base + 2, base + 3, base)
     }
@@ -421,7 +449,7 @@ export class MapblockMesher {
         const uv = this.quadUvs
         uv[0] = 0; uv[1] = 0; uv[2] = 1; uv[3] = 0
         uv[4] = 1; uv[5] = verticalTiling; uv[6] = 0; uv[7] = verticalTiling
-        this.quad(tile, v, uv, this.brightness(this.light, nx, ny, nz))
+        this.quad(tile, v, uv, this.brightness(this.light, nx, ny, nz), this.light)
     }
 
     /**
@@ -466,7 +494,7 @@ export class MapblockMesher {
             }
             const n = FACE_NORMALS[face]!
             const light = lights ? lights[face]! : this.light
-            this.quad(tiles[face]!, v, uv, this.brightness(light, n[0], n[1], n[2]))
+            this.quad(tiles[face]!, v, uv, this.brightness(light, n[0], n[1], n[2]), light)
         }
     }
 
@@ -578,7 +606,7 @@ export class MapblockMesher {
                 mask |= 1 << face
                 continue
             }
-            this.faceLights[face] = Math.max(ownLight, this.interiorLight(neighborIndex))
+            this.faceLights[face] = maxLight(ownLight, this.interiorLight(neighborIndex))
         }
         if (mask === 0b111111) {
             return
@@ -607,7 +635,7 @@ export class MapblockMesher {
         if (info.lightSource === 0 && top !== CONTENT_IGNORE && this.infos[top]!.lightPropagates) {
             light = this.interiorLight(this.index + DY)
         }
-        const brightness = Math.pow(AMBIENT + (1 - AMBIENT) * LIGHT_CURVE[light]!, 2.2)
+        const brightness = Math.pow(AMBIENT + (1 - AMBIENT) * LIGHT_CURVE[light & 0x0f]!, 2.2)
 
         // neighborhood [z + 1][x + 1]
         const content: number[] = [], level: number[] = []
@@ -684,7 +712,7 @@ export class MapblockMesher {
                 v[j * 3] = base[0] - 0.5; v[j * 3 + 1] = y; v[j * 3 + 2] = base[1] - 0.5
                 uv[j * 2] = vu; uv[j * 2 + 1] = tv
             }
-            this.quad(tileSide, v, uv, brightness)
+            this.quad(tileSide, v, uv, brightness, light)
         }
 
         if (!topIsSame) {
@@ -713,7 +741,7 @@ export class MapblockMesher {
             const su = uv[0]!, sv = uv[1]!
             uv[0] = uv[4]!; uv[1] = uv[5]!
             uv[4] = su; uv[5] = sv
-            this.quad(tileTop, v, uv, brightness)
+            this.quad(tileTop, v, uv, brightness, light)
         }
 
         if (drawBottom) {
@@ -721,7 +749,7 @@ export class MapblockMesher {
             v[3] = 0.5; v[4] = -0.5; v[5] = -0.5
             v[6] = 0.5; v[7] = -0.5; v[8] = 0.5
             v[9] = -0.5; v[10] = -0.5; v[11] = 0.5
-            this.quad(tileTop, v, DEFAULT_UV, brightness)
+            this.quad(tileTop, v, DEFAULT_UV, brightness, light)
         }
     }
 
@@ -988,7 +1016,7 @@ export class MapblockMesher {
             return
         }
         // the plant is drawn in the node above, with the light of that node
-        this.light = Math.max(this.interiorLight(this.index + DY), this.info.lightSource)
+        this.light = maxLight(this.interiorLight(this.index + DY), this.info.lightSource * 0x11)
         this.oy += 1
         this.py += 1
         this.drawPlantlike(tile, true)
@@ -1289,6 +1317,7 @@ export class MapblockMesher {
                 buffer.uvs.push(source.uvs[k * 2]!, source.uvs[k * 2 + 1]!)
                 const brightness = this.brightness(this.light, normal[0]!, normal[1]!, normal[2]!)
                 buffer.colors.push(brightness * r, brightness * g, brightness * b)
+                buffer.nightFactors.push(NIGHT_FACTOR[this.light]!)
             }
             for (let k = 0; k < source.indices.length; k++) {
                 buffer.indices.push(base + source.indices[k]!)

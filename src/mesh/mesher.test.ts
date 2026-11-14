@@ -155,6 +155,24 @@ describe("solid nodes", () => {
         expect(brightness.get("0,0,-1")!).toBeLessThan(brightness.get("0,-1,0")!)
     })
 
+    it("keeps the night light apart from the day light", async () => {
+        const { set, mesh, neighborhood } = await setup()
+        set(3, 4, 5, "stone")
+        neighborhood.param1[paddedIndex(3, 5, 5)] = 0xff // artificial light above the node
+        neighborhood.param1[paddedIndex(3, 4, 4)] = 0x5f // dimmer artificial light in front of it
+        const stone = mesh().get("stone.png")!
+        expect(stone.nightFactors).toHaveLength(stone.vertexCount)
+        const factors = new Map(triangleNormals(stone).map((n, i) => [n, stone.nightFactors[stone.indices[i * 3]!]!]))
+        // sunlight only: nothing but the ambient light is left at night
+        expect(factors.get("1,0,0")).toBeCloseTo(0.1)
+        expect(factors.get("0,1,0")).toBeCloseTo(1)
+        expect(factors.get("0,0,-1")!).toBeGreaterThan(0.1)
+        expect(factors.get("0,0,-1")!).toBeLessThan(1)
+        // the day colors are not affected by the night light
+        const color = stone.colors[stone.indices[triangleNormals(stone).indexOf("0,1,0") * 3]! * 3]
+        expect(color).toBeCloseTo(1)
+    })
+
     it("rotates the tiles by facedir", async () => {
         const frontNormal = async (facedir: number) => {
             const { set, mesh } = await setup()

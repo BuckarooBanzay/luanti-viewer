@@ -71,7 +71,14 @@ async function main() {
     }
     // optional fps widget: ?fps
     options.showFPS = params.has("fps")
-    createView(element, options)
+    // optional initial time of day: ?time=0.2 (0 = midnight, 0.5 = noon)
+    const slider = document.getElementById("time") as HTMLInputElement
+    if (params.has("time")) {
+        slider.value = params.get("time")!
+    }
+    options.timeOfDay = slider.valueAsNumber
+    const viewer = createView(element, options)
+    slider.addEventListener("input", () => viewer.setTimeOfDay(slider.valueAsNumber))
 }
 
 main().catch(e => {

@@ -12,10 +12,37 @@ import { parseB3d } from "./models/b3d.js"
 import type { Model } from "./models/model.js"
 import { parseObj } from "./models/obj.js"
 import { TextureCompositor, type RgbaImage } from "./texture/compositor.js"
-import type { MapblockPosition, ViewerCamera, ViewerOptions } from "./types.js"
+import type { MapblockPosition, Viewer, ViewerCamera, ViewerOptions } from "./types.js"
 import { World } from "./world.js"
 
 const SKY_COLOR = 0x8cbafa
+/** sky color without any daylight */
+const NIGHT_SKY_COLOR = 0x03060f
+/** day night ratio (0..1) by the time of day (0..0.5, mirrored at noon), see time_to_daynight_ratio in the engine */
+const DAYNIGHT_RATIOS: readonly (readonly [number, number])[] = [
+    [4375, 175], [4625, 175], [4875, 250], [5125, 350], [5375, 500], [5625, 675], [5875, 875], [6125, 1000]
+].map(([time, ratio]) => [time! / 24000, ratio! / 1000] as const)
+const NIGHT_RATIO = DAYNIGHT_RATIOS[0]![1]
+
+/**
+ * share of the daylight (0.175 at night .. 1 at day) for a time of day (0 = midnight, 0.5 = noon),
+ * times out of range wrap around
+ */
+export function timeToDayNightRatio(tod: number): number {
+    let t = Number.isFinite(tod) ? tod - Math.floor(tod) : 0.5
+    if (t > 0.5) {
+        t = 1 - t
+    }
+    let [lastTime, lastRatio] = DAYNIGHT_RATIOS[0]!
+    for (const [time, ratio] of DAYNIGHT_RATIOS) {
+        if (t <= time) {
+            return time === lastTime ? ratio : lastRatio + (ratio - lastRatio) * (t - lastTime) / (time - lastTime)
+        }
+        lastTime = time
+        lastRatio = ratio
+    }
+    return 1
+}
 /** parallel getMapblock / getMedia requests */
 const CONCURRENCY = 16
 /** unloaded mapblocks that are kept in memory, moving back and forth does not fetch them again (~16 kB each) */
@@ -63,6 +90,12 @@ export function createGeometry(buffer: MeshBuffer): BufferGeometry {
     geometry.setAttribute("position", new BufferAttribute(positions, 3))
     geometry.setAttribute("uv", new BufferAttribute(uvs, 2))
     geometry.setAttribute("color", new BufferAttribute(new Float32Array(buffer.colors), 3))
+    // vertices without a night factor keep their brightness
+    const nightFactors = new Uint8Array(count).fill(255)
+    for (let i = 0; i < buffer.nightFactors.length; i++) {
+        nightFactors[i] = Math.round(buffer.nightFactors[i]! * 255)
+    }
+    geometry.setAttribute("nightFactor", new BufferAttribute(nightFactors, 1, true))
     geometry.setIndex(new BufferAttribute(indices, 1))
     geometry.computeBoundingSphere()
     return geometry
@@ -95,7 +128,7 @@ async function decodeImage(blob: Blob): Promise<RgbaImage> {
  * W/A/S/D moves, Space/Shift moves up/down, E moves faster and Esc or T releases the mouse.
  * All resources are released once the element is removed from the document.
  */
-export function createView(element: HTMLElement, options: ViewerOptions): void {
+export function createView(element: HTMLElement, options: ViewerOptions): Viewer {
     const container = document.createElement("div")
     container.style.cssText = "position:relative;width:100%;height:100%;overflow:hidden"
     element.appendChild(container)
@@ -128,7 +161,8 @@ export function createView(element: HTMLElement, options: ViewerOptions): void {
     container.appendChild(renderer.domElement)
 
     const scene = new Scene()
-    scene.background = new Color(SKY_COLOR)
+    const skyColor = new Color(SKY_COLOR)
+    scene.background = skyColor
 
     if (Number.isNaN(options.viewRange)) {
         throw new Error("viewRange has to be a number")
@@ -272,6 +306,18 @@ export function createView(element: HTMLElement, options: ViewerOptions): void {
         return blob ? decodeImage(blob) : null
     })
     const materials = new MaterialManager(textures)
+
+    const daySky = new Color(SKY_COLOR), nightSky = new Color(NIGHT_SKY_COLOR)
+    const setTimeOfDay = (tod: number) => {
+        const ratio = timeToDayNightRatio(tod)
+        // the night light (artificial light) is not dimmed, the daylight down to the brightness of the night
+        materials.dayNightRatio.value = ratio
+        skyColor.lerpColors(nightSky, daySky, ((ratio - NIGHT_RATIO) / (1 - NIGHT_RATIO)) ** 2.2)
+        if (scene.fog) {
+            scene.fog.color.copy(skyColor)
+        }
+    }
+    setTimeOfDay(options.timeOfDay ?? 0.5)
 
     let disposed = false
     let wasConnected = false
@@ -470,4 +516,6 @@ export function createView(element: HTMLElement, options: ViewerOptions): void {
         console.error("[luanti-viewer] failed to load the scene", e)
         setStatus(`failed to load the scene: ${e instanceof Error ? e.message : e}`)
     })
+
+    return { setTimeOfDay }
 }

@@ -63,12 +63,21 @@ createView(document.getElementById("view")!, {
 
     // optional
     showFPS: true,
+    // optional: initial time of day, 0 = midnight, 0.5 = noon (default)
+    timeOfDay: 0.5,
     events: {
         // reported after every frame in which the camera moved or turned,
         // can be passed back as `camera` to restore the view
         camera: camera => console.log(camera)
     }
 })
+```
+
+`createView` returns a handle to change the time of day later on, the sunlight fades while artificial light keeps its brightness:
+
+```ts
+const viewer = createView(element, options)
+viewer.setTimeOfDay(0) // midnight
 ```
 
 The viewer cleans up after itself (renderer, event listeners, GPU resources) once the element is removed from the document.
