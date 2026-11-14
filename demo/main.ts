@@ -41,7 +41,8 @@ async function main() {
             getMapblock: async pos => scene.getMapblock(pos),
             getMedia,
             minPos: scene.minPos,
-            maxPos: scene.maxPos
+            maxPos: scene.maxPos,
+            viewRange: 8
         }
     } else {
         const manifest = await fetchJson<{ min: MapblockPosition, max: MapblockPosition }>("mapblocks/manifest.json")
@@ -50,7 +51,8 @@ async function main() {
             getMapblock,
             getMedia,
             minPos: manifest.min,
-            maxPos: manifest.max
+            maxPos: manifest.max,
+            viewRange: 10
         }
     }
     // optional initial camera: ?camera=x,y,z&target=x,y,z (node coordinates)
@@ -61,6 +63,11 @@ async function main() {
     const position = vector("camera"), target = vector("target")
     if (position && target) {
         options.camera = { position, target }
+    }
+    // optional view range in mapblocks, loads only the mapblocks around the camera: ?range=4
+    const range = Number(params.get("range"))
+    if (range > 0) {
+        options.viewRange = range
     }
     // optional fps widget: ?fps
     options.showFPS = params.has("fps")

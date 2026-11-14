@@ -1,8 +1,10 @@
 import {
-    BufferAttribute, BufferGeometry, Color, Group, Mesh, PerspectiveCamera, Scene, WebGLRenderer
+    BufferAttribute, BufferGeometry, Box3, Color, Fog, Frustum, Group, Matrix4, Mesh, PerspectiveCamera, Scene,
+    Vector3, WebGLRenderer
 } from "three"
 import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js"
-import { MAPBLOCK_SIZE } from "./mapblock"
+import { MapblockLoader, UNLOAD_MARGIN } from "./loader"
+import { MAPBLOCK_SIZE, type ParsedMapblock } from "./mapblock"
 import { MaterialManager } from "./materials"
 import { createNeighborhood, MapblockMesher, type MeshBuffer } from "./mesh/mesher"
 import { NodeRegistry } from "./mesh/nodes"
@@ -16,8 +18,12 @@ import { World } from "./world"
 const SKY_COLOR = 0x8cbafa
 /** parallel getMapblock / getMedia requests */
 const CONCURRENCY = 16
+/** unloaded mapblocks that are kept in memory, moving back and forth does not fetch them again (~16 kB each) */
+const CACHE_SIZE = 512
 /** time per frame spent on generating meshes (milliseconds) */
 const MESH_BUDGET = 12
+/** the pending mapblocks are sorted again once the camera was rotated by more than ~15 degrees (cosine) */
+const REPRIORITIZE_DOT = 0.966
 /** time between two updates of the fps widget (milliseconds) */
 const FPS_INTERVAL = 500
 
@@ -71,23 +77,11 @@ async function decodeImage(blob: Blob): Promise<RgbaImage> {
     }
 }
 
-/** runs the tasks with a limited number of them in flight */
-async function runParallel<T>(items: T[], limit: number, task: (item: T) => Promise<void>): Promise<void> {
-    let next = 0
-    const worker = async () => {
-        while (next < items.length) {
-            await task(items[next++]!)
-        }
-    }
-    await Promise.all(Array.from({ length: Math.min(limit, items.length) }, worker))
-}
-
-const nextFrame = () => new Promise<void>(resolve => setTimeout(resolve, 0))
-
 /**
  * Renders a luanti scene into the given element.
- * The mapblocks between `minPos` and `maxPos` are loaded and rendered, the camera can be
- * rotated (left mouse button), moved (right mouse button) and zoomed (mouse wheel).
+ * The mapblocks between `minPos` and `maxPos` are loaded and rendered, with a `viewRange` only
+ * the ones around the camera (they are loaded and unloaded while the camera moves).
+ * The camera can be rotated (left mouse button), moved (right mouse button) and zoomed (mouse wheel).
  * All resources are released once the element is removed from the document.
  */
 export function createView(element: HTMLElement, options: ViewerOptions): void {
@@ -99,9 +93,13 @@ export function createView(element: HTMLElement, options: ViewerOptions): void {
     status.style.cssText = "position:absolute;left:8px;bottom:8px;padding:4px 8px;border-radius:4px;"
         + "font:12px/1.4 system-ui,sans-serif;color:#fff;background:rgba(0,0,0,.55);pointer-events:none"
     container.appendChild(status)
+    let statusText: string | null = null
     const setStatus = (text: string) => {
-        status.textContent = text
-        status.style.display = text ? "block" : "none"
+        if (text !== statusText) {
+            statusText = text
+            status.textContent = text
+            status.style.display = text ? "block" : "none"
+        }
     }
 
     let fpsWidget: HTMLDivElement | null = null
@@ -121,18 +119,40 @@ export function createView(element: HTMLElement, options: ViewerOptions): void {
     const scene = new Scene()
     scene.background = new Color(SKY_COLOR)
 
-    // scene bounds in three.js coordinates (x is mirrored)
-    const { minPos, maxPos } = options
-    const sizeX = (maxPos.x - minPos.x + 1) * MAPBLOCK_SIZE
-    const sizeY = (maxPos.y - minPos.y + 1) * MAPBLOCK_SIZE
-    const sizeZ = (maxPos.z - minPos.z + 1) * MAPBLOCK_SIZE
-    const centerX = -(minPos.x * MAPBLOCK_SIZE + sizeX / 2 - 0.5)
-    const centerY = minPos.y * MAPBLOCK_SIZE + sizeY / 2 - 0.5
-    const centerZ = minPos.z * MAPBLOCK_SIZE + sizeZ / 2 - 0.5
-    const extent = Math.max(sizeX, sizeY, sizeZ)
+    const viewRange = options.viewRange ?? Infinity
+    const streaming = Number.isFinite(viewRange)
+    if (!(viewRange > 0)) {
+        throw new Error("viewRange has to be greater than 0")
+    }
+    const bounds = options.minPos && options.maxPos ? { min: options.minPos, max: options.maxPos } : null
+    if (!streaming && !bounds) {
+        throw new Error("minPos and maxPos are required without a viewRange")
+    }
 
-    const camera = new PerspectiveCamera(60, 1, 0.1, Math.max(extent * 8, 1000))
-    camera.position.set(centerX + extent * 0.55, centerY + extent * 0.45, centerZ - extent * 0.55)
+    // scene bounds in three.js coordinates (x is mirrored)
+    let centerX = 0, centerY = 0, centerZ = 0, extent = Infinity
+    if (bounds) {
+        const sizeX = (bounds.max.x - bounds.min.x + 1) * MAPBLOCK_SIZE
+        const sizeY = (bounds.max.y - bounds.min.y + 1) * MAPBLOCK_SIZE
+        const sizeZ = (bounds.max.z - bounds.min.z + 1) * MAPBLOCK_SIZE
+        centerX = -(bounds.min.x * MAPBLOCK_SIZE + sizeX / 2 - 0.5)
+        centerY = bounds.min.y * MAPBLOCK_SIZE + sizeY / 2 - 0.5
+        centerZ = bounds.min.z * MAPBLOCK_SIZE + sizeZ / 2 - 0.5
+        extent = Math.max(sizeX, sizeY, sizeZ)
+    }
+
+    // with a view range the border of the loaded area is hidden by fog, the camera stays close to its target
+    const fogFar = Math.max(viewRange - 1, 1) * MAPBLOCK_SIZE
+    const maxDistance = streaming ? Math.min(extent * 4, fogFar * 0.5) : extent * 4
+    const far = streaming ? (viewRange + UNLOAD_MARGIN + 2) * MAPBLOCK_SIZE : Math.max(extent * 8, 1000)
+    if (streaming) {
+        scene.fog = new Fog(SKY_COLOR, fogFar * 0.6, fogFar)
+    }
+
+    const camera = new PerspectiveCamera(60, 1, 0.1, far)
+    const initialDistance = Math.min(extent, maxDistance)
+    camera.position.set(
+        centerX + initialDistance * 0.55, centerY + initialDistance * 0.45, centerZ - initialDistance * 0.55)
 
     const controls = new OrbitControls(camera, renderer.domElement)
     controls.target.set(centerX, centerY, centerZ)
@@ -143,7 +163,7 @@ export function createView(element: HTMLElement, options: ViewerOptions): void {
     }
     controls.enableDamping = true
     controls.zoomToCursor = true
-    controls.maxDistance = extent * 4
+    controls.maxDistance = maxDistance
     controls.update()
 
     const resize = () => {
@@ -170,11 +190,7 @@ export function createView(element: HTMLElement, options: ViewerOptions): void {
         renderer.setAnimationLoop(null)
         resizeObserver.disconnect()
         controls.dispose()
-        scene.traverse(object => {
-            if (object instanceof Mesh) {
-                object.geometry.dispose()
-            }
-        })
+        loader.dispose()
         materials.dispose()
         renderer.dispose()
         container.remove()
@@ -202,6 +218,9 @@ export function createView(element: HTMLElement, options: ViewerOptions): void {
         }
         materials.update((now - start) / 1000)
         controls.update()
+        if (started) {
+            updateLoader()
+        }
         renderer.render(scene, camera)
     })
 
@@ -232,89 +251,124 @@ export function createView(element: HTMLElement, options: ViewerOptions): void {
         return model
     }
 
-    const load = async () => {
-        const nodes = new NodeRegistry(async name => {
-            try {
-                return await options.getNodeDefinitions(name)
-            } catch (e) {
-                console.error(`[luanti-viewer] failed to load node definition '${name}'`, e)
+    const nodes = new NodeRegistry(async name => {
+        try {
+            return await options.getNodeDefinitions(name)
+        } catch (e) {
+            console.error(`[luanti-viewer] failed to load node definition '${name}'`, e)
+            return null
+        }
+    }, materials)
+    const world = new World(nodes)
+    const mesher = new MapblockMesher(nodes)
+    const neighborhood = createNeighborhood()
+
+    // mapblocks in the view frustum are loaded first
+    const frustum = new Frustum()
+    const projection = new Matrix4()
+    const blockBox = new Box3()
+    const inFrustum = (pos: MapblockPosition) => {
+        const x = pos.x * MAPBLOCK_SIZE - 0.5, y = pos.y * MAPBLOCK_SIZE - 0.5, z = pos.z * MAPBLOCK_SIZE - 0.5
+        blockBox.min.set(-(x + MAPBLOCK_SIZE), y, z)
+        blockBox.max.set(-x, y + MAPBLOCK_SIZE, z + MAPBLOCK_SIZE)
+        return frustum.intersectsBox(blockBox)
+    }
+
+    const loader = new MapblockLoader<ParsedMapblock, Group | null>({
+        viewRange,
+        bounds,
+        concurrency: CONCURRENCY,
+        cacheSize: CACHE_SIZE,
+        fetch: async pos => {
+            const mapblock = await options.getMapblock(pos)
+            if (!mapblock) {
                 return null
             }
-        }, materials)
-        const world = new World(nodes)
-        await nodes.ensure(["air"])
-
-        // mapblocks, from the center outwards
-        const positions: MapblockPosition[] = []
-        for (let x = minPos.x; x <= maxPos.x; x++) {
-            for (let y = minPos.y; y <= maxPos.y; y++) {
-                for (let z = minPos.z; z <= maxPos.z; z++) {
-                    positions.push({ x, y, z })
+            // the node ids are resolved synchronously, the definitions and models have to be present
+            await nodes.ensure(mapblock.nodeNames.values())
+            await Promise.all([...mapblock.nodeNames.values()].map(async name => {
+                const info = nodes.infos[nodes.getId(name)]!
+                if (info.drawtype === "mesh" && info.def.mesh && !info.model) {
+                    info.model = await loadModel(info.def.mesh)
                 }
-            }
-        }
-        const midX = (minPos.x + maxPos.x) / 2, midZ = (minPos.z + maxPos.z) / 2
-        const distance = (p: MapblockPosition) => Math.hypot(p.x - midX, p.z - midZ)
-        positions.sort((a, b) => distance(a) - distance(b) || b.y - a.y)
-
-        let loaded = 0
-        await runParallel(positions, CONCURRENCY, async pos => {
-            if (disposed) {
-                return
-            }
+            }))
+            return mapblock
+        },
+        store: (pos, mapblock) => world.set(pos, mapblock),
+        unload: pos => world.delete(pos),
+        mesh: pos => {
             try {
-                const mapblock = await options.getMapblock(pos)
-                if (mapblock) {
-                    // the node ids are resolved synchronously, the definitions have to be present
-                    await nodes.ensure(mapblock.nodeNames.values())
-                    world.set(pos, mapblock)
+                world.fillNeighborhood(pos, neighborhood)
+                const origin = { x: pos.x * MAPBLOCK_SIZE, y: pos.y * MAPBLOCK_SIZE, z: pos.z * MAPBLOCK_SIZE }
+                const buffers = mesher.mesh(neighborhood, origin)
+                if (buffers.size === 0) {
+                    return null
                 }
-            } catch (e) {
-                console.error(`[luanti-viewer] failed to load mapblock (${pos.x},${pos.y},${pos.z})`, e)
-            }
-            loaded++
-            setStatus(`loading mapblocks ${loaded} / ${positions.length}`)
-        })
-
-        // models of the mesh nodes that are used in the scene
-        setStatus("loading models")
-        await Promise.all(nodes.infos.map(async info => {
-            if (info.drawtype === "mesh" && info.def.mesh) {
-                info.model = await loadModel(info.def.mesh)
-            }
-        }))
-
-        const mesher = new MapblockMesher(nodes)
-        const neighborhood = createNeighborhood()
-        const loadedPositions = positions.filter(pos => world.has(pos))
-        let meshed = 0
-        let sliceStart = performance.now()
-        for (const pos of loadedPositions) {
-            if (disposed) {
-                return
-            }
-            world.fillNeighborhood(pos, neighborhood)
-            const origin = { x: pos.x * MAPBLOCK_SIZE, y: pos.y * MAPBLOCK_SIZE, z: pos.z * MAPBLOCK_SIZE }
-            const buffers = mesher.mesh(neighborhood, origin)
-            if (buffers.size > 0) {
                 const group = new Group()
                 group.position.set(-origin.x, origin.y, origin.z)
                 for (const [tile, buffer] of buffers) {
                     group.add(new Mesh(createGeometry(buffer), materials.getMaterial(tile)))
                 }
                 scene.add(group)
+                return group
+            } catch (e) {
+                console.error(`[luanti-viewer] failed to mesh mapblock (${pos.x},${pos.y},${pos.z})`, e)
+                return null
             }
-            meshed++
-            if (performance.now() - sliceStart > MESH_BUDGET) {
-                setStatus(`generating meshes ${meshed} / ${loadedPositions.length}`)
-                await nextFrame()
-                sliceStart = performance.now()
+        },
+        unmesh: group => {
+            if (group) {
+                scene.remove(group)
+                for (const child of group.children) {
+                    (child as Mesh).geometry.dispose()
+                }
             }
+        },
+        priority: streaming
+            // visible mapblocks first, then by distance
+            ? (pos, distance) => distance + (inFrustum(pos) ? 0 : viewRange + UNLOAD_MARGIN)
+            // from the center outwards, top down
+            : pos => Math.hypot(pos.x - sceneCenter.x, pos.z - sceneCenter.z) - pos.y * 1e-3
+    })
+
+    const blockOf = (coordinate: number) => Math.floor((coordinate + 0.5) / MAPBLOCK_SIZE)
+    /** center of the scene in mapblocks, only used without a view range */
+    const sceneCenter = bounds ? {
+        x: (bounds.min.x + bounds.max.x) / 2, y: (bounds.min.y + bounds.max.y) / 2, z: (bounds.min.z + bounds.max.z) / 2
+    } : { x: 0, y: 0, z: 0 }
+    const direction = new Vector3()
+    const lastDirection = new Vector3()
+
+    /** follows the camera with the loaded range and generates pending meshes, called once per frame */
+    const updateLoader = () => {
+        if (streaming) {
+            camera.getWorldDirection(direction)
+            const center = { x: blockOf(-camera.position.x), y: blockOf(camera.position.y), z: blockOf(camera.position.z) }
+            const rotated = direction.dot(lastDirection) < REPRIORITIZE_DOT
+            if (rotated) {
+                lastDirection.copy(direction)
+            }
+            camera.updateMatrixWorld()
+            frustum.setFromProjectionMatrix(projection.multiplyMatrices(camera.projectionMatrix, camera.matrixWorldInverse))
+            if (!loader.setCenter(center) && rotated) {
+                loader.reprioritize()
+            }
+        } else {
+            loader.setCenter(sceneCenter)
         }
-        setStatus("")
+
+        const sliceStart = performance.now()
+        loader.processMeshes(() => performance.now() - sliceStart < MESH_BUDGET)
+
+        const { fetching, meshing } = loader.stats()
+        setStatus(fetching > 0 ? `loading mapblocks (${fetching} remaining)`
+            : meshing > 0 ? `generating meshes (${meshing} remaining)` : "")
     }
 
-    load().catch(e => {
+    let started = false
+    nodes.ensure(["air"]).then(() => {
+        started = true
+    }).catch(e => {
         console.error("[luanti-viewer] failed to load the scene", e)
         setStatus(`failed to load the scene: ${e instanceof Error ? e.message : e}`)
     })

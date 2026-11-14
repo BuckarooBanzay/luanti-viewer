@@ -36,6 +36,10 @@ export class World {
         this.blocks.set(key(pos.x, pos.y, pos.z), { pos: { ...pos }, ids, param1: mapblock.param1, param2: mapblock.param2 })
     }
 
+    delete(pos: MapblockPosition): void {
+        this.blocks.delete(key(pos.x, pos.y, pos.z))
+    }
+
     has(pos: MapblockPosition): boolean {
         return this.blocks.has(key(pos.x, pos.y, pos.z))
     }

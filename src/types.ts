@@ -162,9 +162,19 @@ export type ViewerOptions = {
     getMapblock(pos: MapblockPosition): Promise<ParsedMapblock|null>
     /** fetches a texture (.png) or model (.obj / .b3d) by its file name, null if it does not exist */
     getMedia(filename: string): Promise<Blob|null>
-    minPos: MapblockPosition,
-    maxPos: MapblockPosition
-    /** initial camera in node coordinates, defaults to an overview of the whole scene */
+    /**
+     * bounds of the scene, mapblocks outside of them are never requested,
+     * required unless `viewRange` is set
+     */
+    minPos?: MapblockPosition,
+    maxPos?: MapblockPosition
+    /**
+     * Radius around the camera in mapblocks: only the mapblocks in range are loaded and rendered,
+     * they are unloaded again once the camera moved away.
+     * The whole scene between `minPos` and `maxPos` is loaded if not set.
+     */
+    viewRange?: number|null
+    /** initial camera in node coordinates, defaults to an overview of the scene */
     camera?: {
         position: { x: number, y: number, z: number }
         target: { x: number, y: number, z: number }

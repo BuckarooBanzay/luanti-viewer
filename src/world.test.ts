@@ -59,6 +59,14 @@ describe("World", () => {
         expect(nb.ids[paddedIndex(-1, -1, 0)]).toBe(CONTENT_IGNORE)
     })
 
+    it("removes mapblocks", () => {
+        const other = new World(nodes)
+        other.set({ x: 0, y: 0, z: 0 }, createBlock(["air"], () => [0, 0, 0]))
+        other.delete({ x: 0, y: 0, z: 0 })
+        expect(other.size).toBe(0)
+        expect(other.has({ x: 0, y: 0, z: 0 })).toBe(false)
+    })
+
     it("resets the arrays between calls", () => {
         const nb = createNeighborhood()
         world.fillNeighborhood({ x: 0, y: 0, z: 0 }, nb)
