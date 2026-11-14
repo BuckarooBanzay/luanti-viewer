@@ -10,7 +10,12 @@ It renders exported mapblocks with the node definitions, textures and models of 
 
 ## Usage
 
-The package is published to [npm](https://www.npmjs.com/package/@buckaroobanzay/luanti-viewer):
+The package is published to the GitHub npm registry. Point the `@buckaroobanzay` scope at it in an `.npmrc` next to your `package.json`. GitHub requires a token to install packages, even public ones: a [personal access token (classic)](https://github.com/settings/tokens) with the `read:packages` scope works.
+
+```ini
+@buckaroobanzay:registry=https://npm.pkg.github.com
+//npm.pkg.github.com/:_authToken=${GITHUB_TOKEN}
+```
 
 ```bash
 npm install @buckaroobanzay/luanti-viewer three
@@ -119,6 +124,6 @@ npm run build        # library build into ./dist (bundle + type declarations)
 
 ### Releasing
 
-Publishing a GitHub release with a tag like `v1.2.3` runs [the publish workflow](.github/workflows/publish.yml). It tests the package, sets the version from the tag, builds it and publishes it to npm with [provenance](https://docs.npmjs.com/generating-provenance-statements). Releases marked as pre-release are published under the `next` dist-tag instead of `latest`. The workflow authenticates through npm [trusted publishing](https://docs.npmjs.com/trusted-publishers), so no token secret is needed.
+Publishing a GitHub release with a tag like `v1.2.3` runs [the publish workflow](.github/workflows/publish.yml). It tests the package, sets the version from the tag, builds it and publishes it to the GitHub npm registry. Releases marked as pre-release are published under the `next` dist-tag instead of `latest`.
 
 The demo takes a few URL parameters: `?scene=showcase` (one example of each drawtype), `?camera=x,y,z&target=x,y,z`, `?range=4` and `?fps`.
