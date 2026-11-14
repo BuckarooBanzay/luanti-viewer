@@ -37,7 +37,9 @@
   ],
   "sideEffects": false,
   "publishConfig": {
-    "registry": "https://npm.pkg.github.com"
+    "registry": "https://registry.npmjs.org",
+    "access": "public",
+    "provenance": true
   },
   "scripts": {
     "build": "vite build && tsc -p tsconfig.build.json",

@@ -1,7 +1,8 @@
 name: publish
 
-# publishes the package to the GitHub npm registry when a release is published,
-# the version is taken from the release tag (e.g. "v1.2.3" -> 1.2.3)
+# publishes the package to the npm registry when a release is published,
+# the version is taken from the release tag (e.g. "v1.2.3" -> 1.2.3).
+# authenticates via npm trusted publishing (OIDC), no token secret needed
 on:
   release:
     types: [published]
@@ -11,15 +12,14 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: read
-      packages: write
+      id-token: write # OIDC token for npm trusted publishing and provenance
     steps:
       - uses: actions/checkout@v5
       - uses: actions/setup-node@v5
         with:
           node-version: 24
           cache: npm
-          registry-url: https://npm.pkg.github.com
-          scope: "@buckaroobanzay"
+          registry-url: https://registry.npmjs.org
       - run: npm ci
       - run: npm run typecheck
       - run: npm test
@@ -28,5 +28,3 @@ jobs:
       # "prepack" builds dist/ before the tarball is created
       # prereleases (e.g. v1.2.0-beta.1) go to the "next" dist-tag instead of "latest"
       - run: npm publish --tag ${{ github.event.release.prerelease && 'next' || 'latest' }}
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
