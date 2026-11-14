@@ -156,6 +156,11 @@ export type MapblockPosition = {
     z: number
 }
 
+export type ViewerCamera = {
+    position: { x: number, y: number, z: number }
+    target: { x: number, y: number, z: number }
+}
+
 export type ViewerOptions = {
     /** fetches the definition of a single node, null if the node is unknown, called once per node name */
     getNodeDefinitions(nodename: string): Promise<NodeDefinition|null>
@@ -175,10 +180,16 @@ export type ViewerOptions = {
      */
     viewRange?: number|null
     /** initial camera position and the point it looks at in node coordinates, defaults to an overview of the scene */
-    camera?: {
-        position: { x: number, y: number, z: number }
-        target: { x: number, y: number, z: number }
-    },
+    camera?: ViewerCamera
     /** show a widget that displays the current fps, defaults to false */
     showFPS?: boolean|null
+
+    /** callbacks for changes in the viewer */
+    events?: {
+        /**
+         * called with the camera position and a point it looks at (node coordinates) once it is set up
+         * and after every frame in which it moved or turned, can be passed as `camera` to restore the view
+         */
+        camera?(camera: ViewerCamera): void
+    }
 }

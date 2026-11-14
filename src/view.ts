@@ -12,7 +12,7 @@ import { parseB3d } from "./models/b3d"
 import type { Model } from "./models/model"
 import { parseObj } from "./models/obj"
 import { TextureCompositor, type RgbaImage } from "./texture/compositor"
-import type { MapblockPosition, ViewerOptions } from "./types"
+import type { MapblockPosition, ViewerCamera, ViewerOptions } from "./types"
 import { World } from "./world"
 
 const SKY_COLOR = 0x8cbafa
@@ -32,6 +32,8 @@ const FAST_FACTOR = 2
 /** bounds of the view range (mapblocks), a set `viewRange` is clamped to them */
 const MIN_VIEW_RANGE = 4
 const MAX_VIEW_RANGE = 20
+/** distance of the reported camera target from the camera position (nodes) */
+const TARGET_DISTANCE = 1
 /** longest frame time used for the movement (seconds), a stalled tab does not teleport the camera */
 const MAX_FRAME_TIME = 0.1
 
@@ -226,6 +228,34 @@ export function createView(element: HTMLElement, options: ViewerOptions): void {
         camera.position.y += forward.y
     }
 
+    // the camera is reported (in node coordinates) after every frame in which it moved or turned
+    const reportedPosition = new Vector3(NaN, NaN, NaN)
+    const reportedDirection = new Vector3(NaN, NaN, NaN)
+    const cameraDirection = new Vector3()
+    const reportCamera = () => {
+        const callback = options.events?.camera
+        if (!callback) {
+            return
+        }
+        camera.getWorldDirection(cameraDirection)
+        if (camera.position.equals(reportedPosition) && cameraDirection.equals(reportedDirection)) {
+            return
+        }
+        reportedPosition.copy(camera.position)
+        reportedDirection.copy(cameraDirection)
+        const { x, y, z } = camera.position
+        const target = cameraDirection.multiplyScalar(TARGET_DISTANCE).add(camera.position)
+        const state: ViewerCamera = {
+            position: { x: -x, y, z },
+            target: { x: -target.x, y: target.y, z: target.z }
+        }
+        try {
+            callback(state)
+        } catch (e) {
+            console.error("[luanti-viewer] camera event handler failed", e)
+        }
+    }
+
     const resize = () => {
         const width = Math.max(container.clientWidth, 1)
         const height = Math.max(container.clientHeight, 1)
@@ -285,6 +315,7 @@ export function createView(element: HTMLElement, options: ViewerOptions): void {
         materials.update((now - start) / 1000)
         move(Math.min((now - lastFrame) / 1000, MAX_FRAME_TIME))
         lastFrame = now
+        reportCamera()
         if (started) {
             updateLoader()
         }
