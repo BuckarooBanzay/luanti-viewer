@@ -9,7 +9,7 @@ dofile(MP .. "/nodedefs.lua")
 dofile(MP .. "/textures.lua")
 dofile(MP .. "/export.lua")
 
-local range = 6
+local range = 20
 local mb_pos1 = vector.new(-range, -2, -range)
 local mb_pos2 = vector.new(range, 3, range)
 
