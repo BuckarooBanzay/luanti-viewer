@@ -168,5 +168,7 @@ export type ViewerOptions = {
     camera?: {
         position: { x: number, y: number, z: number }
         target: { x: number, y: number, z: number }
-    }
+    },
+    /** show a widget that displays the current fps, defaults to false */
+    showFPS?: boolean|null
 }

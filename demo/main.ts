@@ -62,6 +62,8 @@ async function main() {
     if (position && target) {
         options.camera = { position, target }
     }
+    // optional fps widget: ?fps
+    options.showFPS = params.has("fps")
     createView(element, options)
 }
 

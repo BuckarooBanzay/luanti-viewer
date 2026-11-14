@@ -18,6 +18,8 @@ const SKY_COLOR = 0x8cbafa
 const CONCURRENCY = 16
 /** time per frame spent on generating meshes (milliseconds) */
 const MESH_BUDGET = 12
+/** time between two updates of the fps widget (milliseconds) */
+const FPS_INTERVAL = 500
 
 /**
  * Converts the output of the mesher to a three.js geometry.
@@ -102,6 +104,15 @@ export function createView(element: HTMLElement, options: ViewerOptions): void {
         status.style.display = text ? "block" : "none"
     }
 
+    let fpsWidget: HTMLDivElement | null = null
+    if (options.showFPS) {
+        fpsWidget = document.createElement("div")
+        fpsWidget.style.cssText = "position:absolute;right:8px;top:8px;padding:4px 8px;border-radius:4px;"
+            + "font:12px/1.4 ui-monospace,monospace;color:#fff;background:rgba(0,0,0,.55);pointer-events:none"
+        fpsWidget.textContent = "-- fps"
+        container.appendChild(fpsWidget)
+    }
+
     const renderer = new WebGLRenderer({ antialias: true })
     renderer.setPixelRatio(window.devicePixelRatio)
     renderer.domElement.style.display = "block"
@@ -170,6 +181,8 @@ export function createView(element: HTMLElement, options: ViewerOptions): void {
     }
 
     const start = performance.now()
+    let fpsFrames = 0
+    let fpsStart = start
     renderer.setAnimationLoop(() => {
         // release everything once the view is removed from the document
         if (container.isConnected) {
@@ -178,7 +191,16 @@ export function createView(element: HTMLElement, options: ViewerOptions): void {
             dispose()
             return
         }
-        materials.update((performance.now() - start) / 1000)
+        const now = performance.now()
+        if (fpsWidget) {
+            fpsFrames++
+            if (now - fpsStart >= FPS_INTERVAL) {
+                fpsWidget.textContent = `${Math.round(fpsFrames * 1000 / (now - fpsStart))} fps`
+                fpsFrames = 0
+                fpsStart = now
+            }
+        }
+        materials.update((now - start) / 1000)
         controls.update()
         renderer.render(scene, camera)
     })
