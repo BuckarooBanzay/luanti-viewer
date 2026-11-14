@@ -2,7 +2,7 @@ import {
     BufferAttribute, BufferGeometry, Box3, Color, Fog, Frustum, Group, Matrix4, Mesh, PerspectiveCamera, Scene,
     Vector3, WebGLRenderer
 } from "three"
-import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js"
+import { PointerLockControls } from "three/examples/jsm/controls/PointerLockControls.js"
 import { MapblockLoader, UNLOAD_MARGIN } from "./loader"
 import { MAPBLOCK_SIZE, type ParsedMapblock } from "./mapblock"
 import { MaterialManager } from "./materials"
@@ -26,6 +26,14 @@ const MESH_BUDGET = 12
 const REPRIORITIZE_DOT = 0.966
 /** time between two updates of the fps widget (milliseconds) */
 const FPS_INTERVAL = 500
+/** camera movement speed in nodes per second, multiplied by FAST_FACTOR while the fast key is held */
+const MOVE_SPEED = 50
+const FAST_FACTOR = 2
+/** bounds of the view range (mapblocks), a set `viewRange` is clamped to them */
+const MIN_VIEW_RANGE = 4
+const MAX_VIEW_RANGE = 20
+/** longest frame time used for the movement (seconds), a stalled tab does not teleport the camera */
+const MAX_FRAME_TIME = 0.1
 
 /**
  * Converts the output of the mesher to a three.js geometry.
@@ -81,7 +89,8 @@ async function decodeImage(blob: Blob): Promise<RgbaImage> {
  * Renders a luanti scene into the given element.
  * The mapblocks between `minPos` and `maxPos` are loaded and rendered, with a `viewRange` only
  * the ones around the camera (they are loaded and unloaded while the camera moves).
- * The camera can be rotated (left mouse button), moved (right mouse button) and zoomed (mouse wheel).
+ * First person camera: a click into the view captures the mouse (pointer lock) to look around,
+ * W/A/S/D moves, Space/Shift moves up/down, E moves faster and Esc or T releases the mouse.
  * All resources are released once the element is removed from the document.
  */
 export function createView(element: HTMLElement, options: ViewerOptions): void {
@@ -119,11 +128,14 @@ export function createView(element: HTMLElement, options: ViewerOptions): void {
     const scene = new Scene()
     scene.background = new Color(SKY_COLOR)
 
-    const viewRange = options.viewRange ?? Infinity
-    const streaming = Number.isFinite(viewRange)
-    if (!(viewRange > 0)) {
-        throw new Error("viewRange has to be greater than 0")
+    if (Number.isNaN(options.viewRange)) {
+        throw new Error("viewRange has to be a number")
     }
+    // without a view range the whole scene is loaded, otherwise it is clamped to a sensible radius
+    const viewRange = options.viewRange == null
+        ? Infinity
+        : Math.min(Math.max(options.viewRange, MIN_VIEW_RANGE), MAX_VIEW_RANGE)
+    const streaming = Number.isFinite(viewRange)
     const bounds = options.minPos && options.maxPos ? { min: options.minPos, max: options.maxPos } : null
     if (!streaming && !bounds) {
         throw new Error("minPos and maxPos are required without a viewRange")
@@ -141,7 +153,7 @@ export function createView(element: HTMLElement, options: ViewerOptions): void {
         extent = Math.max(sizeX, sizeY, sizeZ)
     }
 
-    // with a view range the border of the loaded area is hidden by fog, the camera stays close to its target
+    // with a view range the border of the loaded area is hidden by fog, the initial camera stays within it
     const fogFar = Math.max(viewRange - 1, 1) * MAPBLOCK_SIZE
     const maxDistance = streaming ? Math.min(extent * 4, fogFar * 0.5) : extent * 4
     const far = streaming ? (viewRange + UNLOAD_MARGIN + 2) * MAPBLOCK_SIZE : Math.max(extent * 8, 1000)
@@ -154,17 +166,65 @@ export function createView(element: HTMLElement, options: ViewerOptions): void {
     camera.position.set(
         centerX + initialDistance * 0.55, centerY + initialDistance * 0.45, centerZ - initialDistance * 0.55)
 
-    const controls = new OrbitControls(camera, renderer.domElement)
-    controls.target.set(centerX, centerY, centerZ)
     if (options.camera) {
         const { position, target } = options.camera
         camera.position.set(-position.x, position.y, position.z)
-        controls.target.set(-target.x, target.y, target.z)
+        camera.lookAt(-target.x, target.y, target.z)
+    } else {
+        camera.lookAt(centerX, centerY, centerZ)
     }
-    controls.enableDamping = true
-    controls.zoomToCursor = true
-    controls.maxDistance = maxDistance
-    controls.update()
+
+    const controls = new PointerLockControls(camera, renderer.domElement)
+    const hint = document.createElement("div")
+    hint.style.cssText = "position:absolute;left:50%;top:8px;transform:translateX(-50%);padding:4px 8px;"
+        + "border-radius:4px;font:12px/1.4 system-ui,sans-serif;color:#fff;background:rgba(0,0,0,.55);"
+        + "pointer-events:none;white-space:nowrap"
+    hint.textContent = "Click to look around \u00b7 WASD to move \u00b7 Space/Shift up/down \u00b7 E fast \u00b7 Esc/T to release"
+    container.appendChild(hint)
+
+    // keys are only handled while the mouse is captured, the embedding page keeps its keyboard otherwise
+    const pressed = new Set<string>()
+    const onKey = (e: KeyboardEvent) => {
+        if (!controls.isLocked) {
+            return
+        }
+        if (e.type === "keydown" && e.code === "KeyT") {
+            // releases the mouse like Esc (the unlock event clears the pressed keys)
+            controls.unlock()
+        } else if (e.type === "keydown") {
+            pressed.add(e.code)
+        } else {
+            pressed.delete(e.code)
+        }
+        e.preventDefault()
+    }
+    const releaseKeys = () => pressed.clear()
+    const onClick = () => controls.lock()
+    renderer.domElement.addEventListener("click", onClick)
+    window.addEventListener("keydown", onKey)
+    window.addEventListener("keyup", onKey)
+    window.addEventListener("blur", releaseKeys)
+    controls.addEventListener("lock", () => hint.style.display = "none")
+    controls.addEventListener("unlock", () => {
+        releaseKeys()
+        hint.style.display = "block"
+    })
+
+    const forward = new Vector3()
+    const axis = (positive: string, negative: string) => (pressed.has(positive) ? 1 : 0) - (pressed.has(negative) ? 1 : 0)
+    const move = (dt: number) => {
+        const distance = MOVE_SPEED * (pressed.has("KeyE") ? FAST_FACTOR : 1) * dt
+        const f = axis("KeyW", "KeyS"), r = axis("KeyD", "KeyA")
+        const u = (pressed.has("Space") ? 1 : 0) - (pressed.has("ShiftLeft") || pressed.has("ShiftRight") ? 1 : 0)
+        if (f === 0 && r === 0 && u === 0) {
+            return
+        }
+        // diagonal movement is not faster than straight movement
+        forward.set(r, u, f).normalize().multiplyScalar(distance)
+        controls.moveForward(forward.z)
+        controls.moveRight(forward.x)
+        camera.position.y += forward.y
+    }
 
     const resize = () => {
         const width = Math.max(container.clientWidth, 1)
@@ -189,6 +249,11 @@ export function createView(element: HTMLElement, options: ViewerOptions): void {
         disposed = true
         renderer.setAnimationLoop(null)
         resizeObserver.disconnect()
+        renderer.domElement.removeEventListener("click", onClick)
+        window.removeEventListener("keydown", onKey)
+        window.removeEventListener("keyup", onKey)
+        window.removeEventListener("blur", releaseKeys)
+        controls.unlock()
         controls.dispose()
         loader.dispose()
         materials.dispose()
@@ -199,6 +264,7 @@ export function createView(element: HTMLElement, options: ViewerOptions): void {
     const start = performance.now()
     let fpsFrames = 0
     let fpsStart = start
+    let lastFrame = start
     renderer.setAnimationLoop(() => {
         // release everything once the view is removed from the document
         if (container.isConnected) {
@@ -217,7 +283,8 @@ export function createView(element: HTMLElement, options: ViewerOptions): void {
             }
         }
         materials.update((now - start) / 1000)
-        controls.update()
+        move(Math.min((now - lastFrame) / 1000, MAX_FRAME_TIME))
+        lastFrame = now
         if (started) {
             updateLoader()
         }

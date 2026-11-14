@@ -170,11 +170,11 @@ export type ViewerOptions = {
     maxPos?: MapblockPosition
     /**
      * Radius around the camera in mapblocks: only the mapblocks in range are loaded and rendered,
-     * they are unloaded again once the camera moved away.
+     * they are unloaded again once the camera moved away. Clamped to 4..20.
      * The whole scene between `minPos` and `maxPos` is loaded if not set.
      */
     viewRange?: number|null
-    /** initial camera in node coordinates, defaults to an overview of the scene */
+    /** initial camera position and the point it looks at in node coordinates, defaults to an overview of the scene */
     camera?: {
         position: { x: number, y: number, z: number }
         target: { x: number, y: number, z: number }
