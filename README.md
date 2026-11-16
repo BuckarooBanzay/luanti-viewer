@@ -82,6 +82,15 @@ viewer.setCollision(true) // walking mode, same as the `collision` option
 viewer.setNoclip(true) // the flying camera passes through the terrain, same as the `noclip` option
 ```
 
+Mapblocks that change while the view is open can be pushed with `updateMapblock`, for example from a WebSocket. The mapblock and its neighbors are rendered again, `null` removes it. Updates for mapblocks that are not loaded are ignored, `getMapblock` should return the current version when they come into range:
+
+```ts
+socket.onmessage = event => {
+    const { pos, data } = JSON.parse(event.data)
+    viewer.updateMapblock(pos, data ? parseMapblock(data) : null)
+}
+```
+
 The viewer cleans up after itself (renderer, event listeners, GPU resources) once the element is removed from the document.
 
 ### Controls

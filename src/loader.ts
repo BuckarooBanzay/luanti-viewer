@@ -45,6 +45,10 @@ type Entry<D, M> = {
     meshQueued: boolean
     meshed: boolean
     mesh: M | null
+    /** the mesh is outdated and waits in the remesh queue */
+    remeshQueued: boolean
+    /** an update arrived while the mapblock was fetched, the result of the fetch is outdated */
+    superseded: boolean
     priority: number
 }
 
@@ -56,7 +60,8 @@ const nearestLast = (a: { priority: number }, b: { priority: number }) => b.prio
  *
  * The mesh of a mapblock depends on the nodes of its 26 neighbors (hidden faces, connected
  * nodes, light), the data is therefore loaded one mapblock further than the meshes and a mesh
- * is only created once all neighbors are resolved. Every mapblock is meshed exactly once.
+ * is only created once all neighbors are resolved. Every mapblock is meshed once and again
+ * whenever its data or the data of a neighbor is replaced with `update`.
  */
 export class MapblockLoader<D, M> {
     private readonly entries = new Map<string, Entry<D, M>>()
@@ -64,6 +69,9 @@ export class MapblockLoader<D, M> {
     private fetchQueue: Entry<D, M>[] = []
     private meshQueue: Entry<D, M>[] = []
     private meshQueueSorted = true
+    /** meshed mapblocks with outdated meshes, processed in order before the mesh queue */
+    private remeshQueue: Entry<D, M>[] = []
+    private readonly inflight = new Set<Entry<D, M>>()
     /** data of unloaded mapblocks (null: does not exist), least recently unloaded first */
     private readonly cache = new Map<string, D | null>()
     private center: MapblockPosition | null = null
@@ -137,6 +145,58 @@ export class MapblockLoader<D, M> {
         return true
     }
 
+    /**
+     * Replaces the data of a mapblock (null: it does not exist anymore) with a newer version from outside,
+     * the meshes of the mapblock and of its neighbors are created again. A running fetch of the mapblock
+     * is outdated by this, its result is ignored.
+     * @returns false if the mapblock is not loaded (out of range), nothing happens besides refreshing the cache
+     */
+    update(pos: MapblockPosition, data: D | null): boolean {
+        if (this.disposed) {
+            return false
+        }
+        const { x, y, z } = pos
+        const k = key(x, y, z)
+        for (const fetch of this.inflight) {
+            if (fetch.key === k) {
+                fetch.superseded = true
+            }
+        }
+        const entry = this.entries.get(k)
+        if (!entry) {
+            if (this.cache.has(k)) {
+                this.cache.set(k, data)
+            }
+            return false
+        }
+        if (entry.state === "loaded" && data === null) {
+            this.options.unload(entry.pos)
+            entry.data = null
+        }
+        this.resolve(entry, data)
+        if (data === null && entry.meshed) {
+            this.unmesh(entry)
+        }
+        for (let dz = -1; dz <= 1; dz++) {
+            for (let dy = -1; dy <= 1; dy++) {
+                for (let dx = -1; dx <= 1; dx++) {
+                    const candidate = this.entries.get(key(x + dx, y + dy, z + dz))
+                    if (!candidate) {
+                        continue
+                    }
+                    if (!candidate.meshed) {
+                        // a missing or pending mapblock got its data
+                        this.queueMeshIfReady(candidate)
+                    } else if (!candidate.remeshQueued) {
+                        candidate.remeshQueued = true
+                        this.remeshQueue.push(candidate)
+                    }
+                }
+            }
+        }
+        return true
+    }
+
     /** re-evaluates the priority of the pending work, e.g. after the camera was rotated */
     reprioritize(): void {
         for (const entry of this.fetchQueue) {
@@ -150,20 +210,33 @@ export class MapblockLoader<D, M> {
         this.meshQueueSorted = true
     }
 
-    /** creates pending meshes (at least one) for as long as `proceed` returns true */
+    /** creates pending meshes (at least one) for as long as `proceed` returns true, outdated meshes are replaced first */
     processMeshes(proceed: () => boolean): void {
         if (!this.meshQueueSorted) {
             this.meshQueue.sort(nearestLast)
             this.meshQueueSorted = true
         }
         do {
+            const outdated = this.remeshQueue.shift()
+            if (outdated) {
+                outdated.remeshQueued = false
+                // unloaded in the meantime otherwise
+                if (outdated.meshed) {
+                    this.options.unmesh(outdated.mesh as M)
+                    outdated.mesh = this.options.mesh(outdated.pos)
+                }
+                continue
+            }
             const entry = this.meshQueue.pop()
             if (!entry) {
                 return
             }
             entry.meshQueued = false
-            entry.meshed = true
-            entry.mesh = this.options.mesh(entry.pos)
+            // removed by an update otherwise
+            if (entry.state === "loaded") {
+                entry.meshed = true
+                entry.mesh = this.options.mesh(entry.pos)
+            }
         } while (proceed())
     }
 
@@ -193,6 +266,7 @@ export class MapblockLoader<D, M> {
         this.cache.clear()
         this.fetchQueue = []
         this.meshQueue = []
+        this.remeshQueue = []
     }
 
     private inBounds(x: number, y: number, z: number): boolean {
@@ -239,7 +313,8 @@ export class MapblockLoader<D, M> {
         if (!entry) {
             entry = {
                 pos: { x, y, z }, key: k, state: "queued", data: null, needed: generation,
-                meshWanted: false, meshQueued: false, meshed: false, mesh: null, priority: 0
+                meshWanted: false, meshQueued: false, meshed: false, mesh: null,
+                remeshQueued: false, superseded: false, priority: 0
             }
             this.entries.set(k, entry)
             const cached = this.cache.get(k)
@@ -265,24 +340,31 @@ export class MapblockLoader<D, M> {
             if (!entry) {
                 return
             }
-            this.start(entry)
+            // resolved by an update otherwise
+            if (entry.state === "queued") {
+                this.start(entry)
+            }
         }
     }
 
     private start(entry: Entry<D, M>): void {
         entry.state = "fetching"
         this.fetching++
+        this.inflight.add(entry)
         const { x, y, z } = entry.pos
         this.options.fetch(entry.pos).catch(e => {
             console.error(`[luanti-viewer] failed to load mapblock (${x},${y},${z})`, e)
             return null
         }).then(data => {
             this.fetching--
+            this.inflight.delete(entry)
             if (this.disposed) {
                 return
             }
-            // unchanged entry: the mapblock did not leave the range while it was fetched
-            if (this.entries.get(entry.key) === entry) {
+            if (entry.superseded) {
+                // an update delivered newer data
+            } else if (this.entries.get(entry.key) === entry) {
+                // unchanged entry: the mapblock did not leave the range while it was fetched
                 this.resolve(entry, data)
                 // this mapblock and its neighbors might be ready for meshing now
                 for (let dz = -1; dz <= 1; dz++) {

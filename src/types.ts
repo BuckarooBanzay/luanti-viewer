@@ -231,4 +231,11 @@ export type Viewer = {
      * the user can also toggle it with the H key or the touch controls
      */
     setNoclip(enabled: boolean): void
+    /**
+     * Replaces a mapblock with a newer version, e.g. pushed by a server: the mapblock and its neighbors are
+     * rendered again, null removes it. Updates of mapblocks that are not loaded (out of the view range or
+     * the bounds) are ignored, `getMapblock` is expected to return the current version once they are needed.
+     * Updates of the same mapblock are applied in the order of the calls.
+     */
+    updateMapblock(pos: MapblockPosition, mapblock: ParsedMapblock | null): void
 }

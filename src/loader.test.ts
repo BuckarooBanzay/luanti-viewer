@@ -11,6 +11,9 @@ function setup(viewRange: number, bounds: Bounds | null = null, absent: string[]
     const requested: string[] = []
     const stored = new Set<string>()
     const meshed = new Set<string>()
+    /** the stored data per mapblock and every mesh call in order */
+    const values = new Map<string, string>()
+    const meshLog: string[] = []
     const loader = new MapblockLoader<string, string>({
         viewRange,
         bounds,
@@ -20,8 +23,9 @@ function setup(viewRange: number, bounds: Bounds | null = null, absent: string[]
             requested.push(key(pos))
             pending.set(key(pos), () => resolve(absent.includes(key(pos)) ? null : key(pos)))
         }),
-        store: pos => {
+        store: (pos, data) => {
             stored.add(key(pos))
+            values.set(key(pos), data)
         },
         unload: pos => {
             expect(stored.delete(key(pos))).toBe(true)
@@ -29,6 +33,7 @@ function setup(viewRange: number, bounds: Bounds | null = null, absent: string[]
         mesh: pos => {
             expect(meshed.has(key(pos))).toBe(false)
             meshed.add(key(pos))
+            meshLog.push(key(pos))
             return key(pos)
         },
         unmesh: mesh => {
@@ -45,7 +50,7 @@ function setup(viewRange: number, bounds: Bounds | null = null, absent: string[]
         await flush()
         loader.processMeshes(() => true)
     }
-    return { loader, pending, requested, stored, meshed, resolve }
+    return { loader, pending, requested, stored, meshed, values, meshLog, resolve }
 }
 
 describe("MapblockLoader", () => {
@@ -185,6 +190,79 @@ describe("MapblockLoader", () => {
         expect(requested.every(k => k.startsWith("2,"))).toBe(true)
         await flush()
         expect(requested).toHaveLength(81)
+    })
+
+    it("meshes an updated mapblock and its meshed neighbors again", async () => {
+        const { loader, meshed, values, meshLog, resolve } = setup(1)
+        loader.setCenter({ x: 0, y: 0, z: 0 })
+        await resolve()
+        meshLog.length = 0
+
+        expect(loader.update({ x: 0, y: 0, z: 0 }, "new")).toBe(true)
+        expect(loader.update({ x: 0, y: 0, z: 0 }, "newer")).toBe(true)
+        expect(meshLog).toEqual([])
+        loader.processMeshes(() => true)
+        expect(values.get("0,0,0")).toBe("newer")
+        expect([...meshLog].sort()).toEqual(["-1,0,0", "0,-1,0", "0,0,-1", "0,0,0", "0,0,1", "0,1,0", "1,0,0"])
+        expect(meshed.size).toBe(7)
+
+        // only loaded as a neighbor: just the adjacent mesh is affected
+        meshLog.length = 0
+        expect(loader.update({ x: 2, y: 1, z: 1 }, "new")).toBe(true)
+        loader.processMeshes(() => true)
+        expect(meshLog).toEqual(["1,0,0"])
+        expect(loader.stats()).toEqual({ fetching: 0, meshing: 0 })
+    })
+
+    it("removes and adds mapblocks with updates", async () => {
+        const { loader, stored, meshed, meshLog, resolve } = setup(1, null, ["0,1,0"])
+        loader.setCenter({ x: 0, y: 0, z: 0 })
+        await resolve()
+        meshLog.length = 0
+
+        loader.update({ x: 0, y: 0, z: 0 }, null)
+        expect(stored.has("0,0,0")).toBe(false)
+        expect(meshed.has("0,0,0")).toBe(false)
+        loader.processMeshes(() => true)
+        expect(meshLog).toHaveLength(5)
+        expect(meshed.size).toBe(5)
+
+        loader.update({ x: 0, y: 0, z: 0 }, "back")
+        loader.update({ x: 0, y: 1, z: 0 }, "created")
+        loader.processMeshes(() => true)
+        expect(meshed.size).toBe(7)
+        expect(stored.has("0,1,0")).toBe(true)
+    })
+
+    it("ignores the fetch of a mapblock that was updated in the meantime", async () => {
+        const { loader, values, meshed, resolve } = setup(1)
+        loader.setCenter({ x: 0, y: 0, z: 0 })
+        loader.update({ x: 0, y: 0, z: 0 }, "pushed")
+        loader.update({ x: 1, y: 0, z: 0 }, null)
+        await resolve()
+        expect(values.get("0,0,0")).toBe("pushed")
+        expect(meshed.has("1,0,0")).toBe(false)
+        expect(meshed.size).toBe(6)
+    })
+
+    it("refreshes the cache with updates of unloaded mapblocks", async () => {
+        const { loader, requested, values, resolve } = setup(1, null, [], 1000)
+        loader.setCenter({ x: 0, y: 0, z: 0 })
+        await resolve(k => k !== "1,0,0")
+        loader.setCenter({ x: 100, y: 0, z: 0 })
+        // cached / still being fetched / unknown
+        expect(loader.update({ x: 0, y: 0, z: 0 }, "pushed")).toBe(false)
+        expect(loader.update({ x: 1, y: 0, z: 0 }, "pushed")).toBe(false)
+        expect(loader.update({ x: 50, y: 0, z: 0 }, "pushed")).toBe(false)
+        await resolve()
+
+        // the outdated fetch result was not cached
+        loader.setCenter({ x: 0, y: 0, z: 0 })
+        expect(requested).toHaveLength(163)
+        expect(requested[162]).toBe("1,0,0")
+        expect(values.get("0,0,0")).toBe("pushed")
+        await resolve()
+        expect(values.get("1,0,0")).toBe("1,0,0")
     })
 
     it("removes the meshes on dispose", async () => {

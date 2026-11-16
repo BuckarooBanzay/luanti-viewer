@@ -553,6 +553,17 @@ export function createView(element: HTMLElement, options: ViewerOptions): Viewer
         return frustum.intersectsBox(blockBox)
     }
 
+    /** the node ids are resolved synchronously while meshing, the definitions and models have to be present */
+    const prepare = async (mapblock: ParsedMapblock) => {
+        await nodes.ensure(mapblock.nodeNames.values())
+        await Promise.all([...mapblock.nodeNames.values()].map(async name => {
+            const info = nodes.infos[nodes.getId(name)]!
+            if (info.drawtype === "mesh" && info.def.mesh && !info.model) {
+                info.model = await loadModel(info.def.mesh)
+            }
+        }))
+    }
+
     const loader = new MapblockLoader<ParsedMapblock, Group | null>({
         viewRange,
         bounds,
@@ -560,17 +571,9 @@ export function createView(element: HTMLElement, options: ViewerOptions): Viewer
         cacheSize: CACHE_SIZE,
         fetch: async pos => {
             const mapblock = await options.getMapblock(pos)
-            if (!mapblock) {
-                return null
+            if (mapblock) {
+                await prepare(mapblock)
             }
-            // the node ids are resolved synchronously, the definitions and models have to be present
-            await nodes.ensure(mapblock.nodeNames.values())
-            await Promise.all([...mapblock.nodeNames.values()].map(async name => {
-                const info = nodes.infos[nodes.getId(name)]!
-                if (info.drawtype === "mesh" && info.def.mesh && !info.model) {
-                    info.model = await loadModel(info.def.mesh)
-                }
-            }))
             return mapblock
         },
         store: (pos, mapblock) => world.set(pos, mapblock),
@@ -652,5 +655,28 @@ export function createView(element: HTMLElement, options: ViewerOptions): Viewer
         setStatus(`failed to load the scene: ${e instanceof Error ? e.message : e}`)
     })
 
-    return { setTimeOfDay, setCollision, setNoclip }
+    /** number of the latest update per mapblock that is still being prepared */
+    const pendingUpdates = new Map<string, number>()
+    let updateCount = 0
+
+    const updateMapblock = (pos: MapblockPosition, mapblock: ParsedMapblock | null) => {
+        const target = { x: pos.x, y: pos.y, z: pos.z }
+        const k = `${target.x},${target.y},${target.z}`
+        const id = ++updateCount
+        pendingUpdates.set(k, id)
+        Promise.resolve(mapblock && prepare(mapblock)).then(() => {
+            // replaced by a newer update of the same mapblock otherwise
+            if (pendingUpdates.get(k) === id) {
+                pendingUpdates.delete(k)
+                loader.update(target, mapblock)
+            }
+        }).catch(e => {
+            if (pendingUpdates.get(k) === id) {
+                pendingUpdates.delete(k)
+            }
+            console.error(`[luanti-viewer] failed to update mapblock (${k})`, e)
+        })
+    }
+
+    return { setTimeOfDay, setCollision, setNoclip, updateMapblock }
 }
