@@ -43,6 +43,8 @@ export type NodeInfo = {
     /** occludes the faces of its neighbors (solidness 2 in the engine) */
     solid: boolean
     isAir: boolean
+    /** blocks the player, nodes of unknown or not loaded content are walkable (engine default) */
+    walkable: boolean
     /** tile ids for top, bottom, right, left, back, front */
     tiles: number[]
     /** tile ids of the special tiles, -1 if not defined */
@@ -265,6 +267,7 @@ export class NodeRegistry {
             drawtype,
             solid: drawtype === "normal",
             isAir: def.name === "air",
+            walkable: def.walkable ?? true,
             tiles: drawtype === "airlike" ? [-1, -1, -1, -1, -1, -1] : this.compileTiles(def, drawtype, alpha),
             specialTiles: this.compileSpecialTiles(def, drawtype, alpha),
             alpha,

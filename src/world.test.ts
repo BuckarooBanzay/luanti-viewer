@@ -42,6 +42,23 @@ describe("World", () => {
         expect(nb.param2[paddedIndex(3, 5, 9)]).toBe(9)
     })
 
+    it("reports solid nodes across mapblock borders", async () => {
+        const registry = new NodeRegistry(async name => ({
+            name, drawtype: "normal", paramtype: "none", paramtype2: "none", light_source: 0, groups: null,
+            walkable: name === "air" ? false : name !== "ghost"
+        }), { getTile: () => 0 })
+        await registry.ensure(["air", "stone", "ghost"])
+        const w = new World(registry)
+        w.set({ x: 0, y: 0, z: 0 }, createBlock(["air", "stone", "ghost"], (x, y) => [y === 0 ? 1 : x === 3 ? 2 : 0, 0, 0]))
+        expect(w.isSolid(5, 0, 5)).toBe(true)
+        expect(w.isSolid(5, 1, 5)).toBe(false)
+        // not walkable
+        expect(w.isSolid(3, 1, 5)).toBe(false)
+        // not loaded
+        expect(w.isSolid(16, 0, 0)).toBe(true)
+        expect(w.isSolid(-1, 0, 0)).toBe(true)
+    })
+
     it("copies the adjacent nodes of the neighbors", () => {
         const nb = createNeighborhood()
         world.fillNeighborhood({ x: 0, y: 0, z: 0 }, nb)

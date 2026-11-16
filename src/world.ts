@@ -1,4 +1,4 @@
-import { MAPBLOCK_SIZE, MAPBLOCK_VOLUME, type ParsedMapblock } from "./mapblock.js"
+import { MAPBLOCK_SIZE, MAPBLOCK_VOLUME, getNodeIndex, type ParsedMapblock } from "./mapblock.js"
 import { PADDED_SIZE, type Neighborhood } from "./mesh/mesher.js"
 import { CONTENT_IGNORE, type NodeRegistry } from "./mesh/nodes.js"
 import type { MapblockPosition } from "./types.js"
@@ -42,6 +42,20 @@ export class World {
 
     has(pos: MapblockPosition): boolean {
         return this.blocks.has(key(pos.x, pos.y, pos.z))
+    }
+
+    /**
+     * true if the node at the given node position (engine coordinates) blocks the player:
+     * walkable nodes and positions without a loaded mapblock (the player waits for them)
+     */
+    isSolid(x: number, y: number, z: number): boolean {
+        const bx = Math.floor(x / MAPBLOCK_SIZE), by = Math.floor(y / MAPBLOCK_SIZE), bz = Math.floor(z / MAPBLOCK_SIZE)
+        const block = this.blocks.get(key(bx, by, bz))
+        if (!block) {
+            return true
+        }
+        const id = block.ids[getNodeIndex(x - bx * MAPBLOCK_SIZE, y - by * MAPBLOCK_SIZE, z - bz * MAPBLOCK_SIZE)]!
+        return id === CONTENT_IGNORE || this.nodes.infos[id]!.walkable
     }
 
     /** copies the nodes of a mapblock and the adjacent nodes of its 26 neighbors into the padded arrays */

@@ -78,6 +78,7 @@ createView(document.getElementById("view")!, {
 ```ts
 const viewer = createView(element, options)
 viewer.setTimeOfDay(0) // midnight
+viewer.setCollision(true) // walking mode, same as the `collision` option
 ```
 
 The viewer cleans up after itself (renderer, event listeners, GPU resources) once the element is removed from the document.
@@ -91,6 +92,7 @@ Click into the view to capture the mouse and look around.
 | W A S D     | move               |
 | Space/Shift | up / down          |
 | E           | move faster        |
+| C           | toggle walking mode (gravity and collision, Space jumps) |
 | Esc / T     | release the mouse  |
 
 See [src/types.ts](src/types.ts) for all `ViewerOptions` and the `NodeDefinition` format.

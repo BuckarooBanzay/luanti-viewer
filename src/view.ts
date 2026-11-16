@@ -2,6 +2,7 @@ import {
     BufferAttribute, BufferGeometry, Box3, Color, Fog, Frustum, Group, Matrix4, Mesh, PerspectiveCamera, Scene,
     Vector3, WebGLRenderer
 } from "three"
+import { PLAYER_EYE_HEIGHT, collide, isFree } from "./physics.js"
 import { PointerLockControls } from "three/examples/jsm/controls/PointerLockControls.js"
 import { MapblockLoader, UNLOAD_MARGIN } from "./loader.js"
 import { MAPBLOCK_SIZE, type ParsedMapblock } from "./mapblock.js"
@@ -56,6 +57,13 @@ const FPS_INTERVAL = 500
 /** camera movement speed in nodes per second, multiplied by FAST_FACTOR while the fast key is held */
 const MOVE_SPEED = 50
 const FAST_FACTOR = 2
+/** walking mode: speed (nodes per second, multiplied by FAST_FACTOR with the fast key), gravity and jump */
+const WALK_SPEED = 4.5
+const GRAVITY = 20
+const JUMP_SPEED = 7
+const MAX_FALL_SPEED = 50
+/** how far (nodes) a player inside of a node is lifted to find free space */
+const MAX_UNSTUCK = 32
 /** bounds of the view range (mapblocks), a set `viewRange` is clamped to them */
 const MIN_VIEW_RANGE = 4
 const MAX_VIEW_RANGE = 20
@@ -126,6 +134,7 @@ async function decodeImage(blob: Blob): Promise<RgbaImage> {
  * the ones around the camera (they are loaded and unloaded while the camera moves).
  * First person camera: a click into the view captures the mouse (pointer lock) to look around,
  * W/A/S/D moves, Space/Shift moves up/down, E moves faster and Esc or T releases the mouse.
+ * C toggles the walking mode (see `ViewerOptions.collision`): gravity and collision with the terrain, Space jumps.
  * All resources are released once the element is removed from the document.
  */
 export function createView(element: HTMLElement, options: ViewerOptions): Viewer {
@@ -215,7 +224,7 @@ export function createView(element: HTMLElement, options: ViewerOptions): Viewer
     hint.style.cssText = "position:absolute;left:50%;top:8px;transform:translateX(-50%);padding:4px 8px;"
         + "border-radius:4px;font:12px/1.4 system-ui,sans-serif;color:#fff;background:rgba(0,0,0,.55);"
         + "pointer-events:none;white-space:nowrap"
-    hint.textContent = "Click to look around \u00b7 WASD to move \u00b7 Space/Shift up/down \u00b7 E fast \u00b7 Esc/T to release"
+    hint.textContent = "Click to look around \u00b7 WASD to move \u00b7 Space/Shift up/down \u00b7 E fast \u00b7 C walk/fly \u00b7 Esc/T to release"
     container.appendChild(hint)
 
     // keys are only handled while the mouse is captured, the embedding page keeps its keyboard otherwise
@@ -227,6 +236,10 @@ export function createView(element: HTMLElement, options: ViewerOptions): Viewer
         if (e.type === "keydown" && e.code === "KeyT") {
             // releases the mouse like Esc (the unlock event clears the pressed keys)
             controls.unlock()
+        } else if (e.type === "keydown" && e.code === "KeyC") {
+            if (!e.repeat) {
+                setCollision(!walking)
+            }
         } else if (e.type === "keydown") {
             pressed.add(e.code)
         } else {
@@ -248,7 +261,7 @@ export function createView(element: HTMLElement, options: ViewerOptions): Viewer
 
     const forward = new Vector3()
     const axis = (positive: string, negative: string) => (pressed.has(positive) ? 1 : 0) - (pressed.has(negative) ? 1 : 0)
-    const move = (dt: number) => {
+    const flyMove = (dt: number) => {
         const distance = MOVE_SPEED * (pressed.has("KeyE") ? FAST_FACTOR : 1) * dt
         const f = axis("KeyW", "KeyS"), r = axis("KeyD", "KeyA")
         const u = (pressed.has("Space") ? 1 : 0) - (pressed.has("ShiftLeft") || pressed.has("ShiftRight") ? 1 : 0)
@@ -261,6 +274,61 @@ export function createView(element: HTMLElement, options: ViewerOptions): Viewer
         controls.moveRight(forward.x)
         camera.position.y += forward.y
     }
+
+    // walking mode: the player box is checked against the loaded nodes (engine coordinates, x is mirrored)
+    let walking = false
+    let verticalSpeed = 0
+    let onGround = false
+    const look = new Vector3()
+    const walkMove = (dt: number) => {
+        let x = -camera.position.x, y = camera.position.y - PLAYER_EYE_HEIGHT, z = camera.position.z
+        // inside of a node (e.g. after switching the mode or while the mapblocks load): lift to the next free space
+        if (!isFree(world, x, y, z)) {
+            for (let i = 1; i <= MAX_UNSTUCK; i++) {
+                if (isFree(world, x, y + i, z)) {
+                    camera.position.y += i
+                    y += i
+                    verticalSpeed = 0
+                    break
+                }
+            }
+        }
+
+        // horizontal movement relative to the view direction, ignoring the pitch
+        camera.getWorldDirection(look)
+        look.y = 0
+        let dx = 0, dz = 0
+        const f = axis("KeyW", "KeyS"), r = axis("KeyD", "KeyA")
+        if ((f !== 0 || r !== 0) && look.lengthSq() > 1e-8) {
+            look.normalize()
+            const speed = WALK_SPEED * (pressed.has("KeyE") ? FAST_FACTOR : 1) / Math.hypot(f, r)
+            // three.js: right = (-look.z, look.x), x is mirrored for the world
+            const tx = (look.x * f - look.z * r) * speed * dt, tz = (look.z * f + look.x * r) * speed * dt
+            dx = -tx
+            dz = tz
+        }
+        if (onGround && pressed.has("Space")) {
+            verticalSpeed = JUMP_SPEED
+        }
+        verticalSpeed = Math.max(verticalSpeed - GRAVITY * dt, -MAX_FALL_SPEED)
+
+        const result = collide(world, x, y, z, dx, verticalSpeed * dt, dz)
+        if (result.hitY) {
+            verticalSpeed = 0
+        }
+        onGround = result.onGround
+        camera.position.set(-result.x, result.y + PLAYER_EYE_HEIGHT, result.z)
+    }
+    const move = (dt: number) => walking ? walkMove(dt) : flyMove(dt)
+
+    const setCollision = (enabled: boolean) => {
+        if (enabled !== walking) {
+            walking = enabled
+            verticalSpeed = 0
+            onGround = false
+        }
+    }
+    setCollision(options.collision ?? false)
 
     // the camera is reported (in node coordinates) after every frame in which it moved or turned
     const reportedPosition = new Vector3(NaN, NaN, NaN)
@@ -517,5 +585,5 @@ export function createView(element: HTMLElement, options: ViewerOptions): Viewer
         setStatus(`failed to load the scene: ${e instanceof Error ? e.message : e}`)
     })
 
-    return { setTimeOfDay }
+    return { setTimeOfDay, setCollision }
 }

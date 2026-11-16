@@ -77,6 +77,8 @@ async function main() {
         slider.value = params.get("time")!
     }
     options.timeOfDay = slider.valueAsNumber
+    // optional walking mode with gravity and collision: ?walk
+    options.collision = params.has("walk")
     const viewer = createView(element, options)
     slider.addEventListener("input", () => viewer.setTimeOfDay(slider.valueAsNumber))
 }

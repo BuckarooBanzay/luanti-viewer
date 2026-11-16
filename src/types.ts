@@ -124,6 +124,8 @@ export type NodeDefinition = {
     paramtype: ParamType
     paramtype2: ParamType2
     light_source: number
+    /** the node blocks the player (collision), the engine default is true if absent */
+    walkable?: boolean | null
     /** group name -> rating, null if the node has no groups */
     groups: Record<string, number> | null
     /** up to 6 entries, absent on airlike nodes */
@@ -185,6 +187,11 @@ export type ViewerOptions = {
     showFPS?: boolean|null
     /** initial time of day, see `Viewer.setTimeOfDay`, defaults to 0.5 (noon) */
     timeOfDay?: number|null
+    /**
+     * start in the walking mode: gravity and collision with the terrain instead of the free flying camera,
+     * opt-in, defaults to false
+     */
+    collision?: boolean|null
 
     /** callbacks for changes in the viewer */
     events?: {
@@ -203,4 +210,9 @@ export type Viewer = {
      * sets the lighting of the scene accordingly
      */
     setTimeOfDay(tod: number): void
+    /**
+     * switches between the walking mode (gravity and collision with the terrain, Space jumps)
+     * and the free flying camera, the user can also toggle it with the C key
+     */
+    setCollision(enabled: boolean): void
 }

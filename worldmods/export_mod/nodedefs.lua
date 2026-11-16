@@ -22,6 +22,7 @@ function mtwebview.export_nodedefs()
             node_box = def.node_box,
             connects_to = def.connects_to,
             connect_sides = def.connect_sides,
+            walkable = def.walkable,
             groups = def.groups
         }
 
