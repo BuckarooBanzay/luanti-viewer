@@ -65,6 +65,8 @@ const JUMP_SPEED = 7
 const MAX_FALL_SPEED = 50
 /** how far (nodes) a player inside of a node is lifted to find free space */
 const MAX_UNSTUCK = 32
+/** half edge length (nodes) of the box around the flying camera, keeps the near plane out of the nodes */
+const CAMERA_HALF_SIZE = 0.25
 /** bounds of the view range (mapblocks), a set `viewRange` is clamped to them */
 const MIN_VIEW_RANGE = 4
 const MAX_VIEW_RANGE = 20
@@ -136,6 +138,7 @@ async function decodeImage(blob: Blob): Promise<RgbaImage> {
  * First person camera: a click into the view captures the mouse (pointer lock) to look around,
  * W/A/S/D moves, Space/Shift moves up/down, E moves faster and Esc or T releases the mouse.
  * C toggles the walking mode (see `ViewerOptions.collision`): gravity and collision with the terrain, Space jumps.
+ * H toggles noclip (see `ViewerOptions.noclip`): the flying camera passes through the terrain instead of being stopped by it.
  * On touch devices a tap into the view shows on-screen controls instead (see `ViewerOptions.touchControls`).
  * All resources are released once the element is removed from the document.
  */
@@ -226,7 +229,7 @@ export function createView(element: HTMLElement, options: ViewerOptions): Viewer
     hint.style.cssText = "position:absolute;left:50%;top:8px;transform:translateX(-50%);padding:4px 8px;"
         + "border-radius:4px;font:12px/1.4 system-ui,sans-serif;color:#fff;background:rgba(0,0,0,.55);"
         + "pointer-events:none;white-space:nowrap"
-    const keyboardHint = "Click to look around \u00b7 WASD to move \u00b7 Space/Shift up/down \u00b7 E fast \u00b7 C walk/fly \u00b7 Esc/T to release"
+    const keyboardHint = "Click to look around \u00b7 WASD to move \u00b7 Space/Shift up/down \u00b7 E fast \u00b7 C walk/fly \u00b7 H noclip \u00b7 Esc/T to release"
 
     // touch devices: on-screen controls instead of the pointer lock, the camera is turned by drags
     const lookEuler = new Euler(0, 0, 0, "YXZ")
@@ -238,6 +241,7 @@ export function createView(element: HTMLElement, options: ViewerOptions): Viewer
             camera.quaternion.setFromEuler(lookEuler)
         },
         toggleWalking: () => setCollision(!walking),
+        toggleNoclip: () => setNoclip(!noclip),
         deactivated: () => hint.style.display = "block"
     })
     hint.textContent = touch && window.matchMedia?.("(pointer: coarse)").matches
@@ -257,6 +261,10 @@ export function createView(element: HTMLElement, options: ViewerOptions): Viewer
         } else if (e.type === "keydown" && e.code === "KeyC") {
             if (!e.repeat) {
                 setCollision(!walking)
+            }
+        } else if (e.type === "keydown" && e.code === "KeyH") {
+            if (!e.repeat) {
+                setNoclip(!noclip)
             }
         } else if (e.type === "keydown") {
             pressed.add(e.code)
@@ -295,6 +303,9 @@ export function createView(element: HTMLElement, options: ViewerOptions): Viewer
     const forwardAxis = () => axis("KeyW", "KeyS", touch?.input.forward)
     const rightAxis = () => axis("KeyD", "KeyA", touch?.input.right)
     const fastFactor = () => pressed.has("KeyE") || touch?.input.fast ? FAST_FACTOR : 1
+    // flying without noclip: a small box around the camera is stopped by the loaded walkable nodes
+    let noclip = false
+    const obstacles = { isSolid: (x: number, y: number, z: number) => world.isObstacle(x, y, z) }
     const flyMove = (dt: number) => {
         const distance = MOVE_SPEED * fastFactor() * dt
         const f = forwardAxis(), r = rightAxis()
@@ -308,9 +319,18 @@ export function createView(element: HTMLElement, options: ViewerOptions): Viewer
             forward.normalize()
         }
         forward.multiplyScalar(distance)
+        // engine coordinates (x is mirrored) of the lower center of the camera box before the movement
+        const x = -camera.position.x, y = camera.position.y - CAMERA_HALF_SIZE, z = camera.position.z
         controls.moveForward(forward.z)
         controls.moveRight(forward.x)
         camera.position.y += forward.y
+        // a camera that is already inside of a node (e.g. the mapblocks were loaded around it) moves freely to get out
+        if (!noclip && isFree(obstacles, x, y, z, CAMERA_HALF_SIZE, CAMERA_HALF_SIZE * 2)) {
+            const result = collide(
+                obstacles, x, y, z, -camera.position.x - x, camera.position.y - CAMERA_HALF_SIZE - y, camera.position.z - z,
+                CAMERA_HALF_SIZE, CAMERA_HALF_SIZE * 2)
+            camera.position.set(-result.x, result.y + CAMERA_HALF_SIZE, result.z)
+        }
     }
 
     // walking mode: the player box is checked against the loaded nodes (engine coordinates, x is mirrored)
@@ -369,6 +389,12 @@ export function createView(element: HTMLElement, options: ViewerOptions): Viewer
         touch?.setWalking(walking)
     }
     setCollision(options.collision ?? false)
+
+    const setNoclip = (enabled: boolean) => {
+        noclip = enabled
+        touch?.setNoclip(noclip)
+    }
+    setNoclip(options.noclip ?? false)
 
     // the camera is reported (in node coordinates) after every frame in which it moved or turned
     const reportedPosition = new Vector3(NaN, NaN, NaN)
@@ -626,5 +652,5 @@ export function createView(element: HTMLElement, options: ViewerOptions): Viewer
         setStatus(`failed to load the scene: ${e instanceof Error ? e.message : e}`)
     })
 
-    return { setTimeOfDay, setCollision }
+    return { setTimeOfDay, setCollision, setNoclip }
 }

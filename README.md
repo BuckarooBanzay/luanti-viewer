@@ -79,6 +79,7 @@ createView(document.getElementById("view")!, {
 const viewer = createView(element, options)
 viewer.setTimeOfDay(0) // midnight
 viewer.setCollision(true) // walking mode, same as the `collision` option
+viewer.setNoclip(true) // the flying camera passes through the terrain, same as the `noclip` option
 ```
 
 The viewer cleans up after itself (renderer, event listeners, GPU resources) once the element is removed from the document.
@@ -93,6 +94,7 @@ Click into the view to capture the mouse and look around.
 | Space/Shift | up / down          |
 | E           | move faster        |
 | C           | toggle walking mode (gravity and collision, Space jumps) |
+| H           | toggle noclip (the flying camera passes through the terrain) |
 | Esc / T     | release the mouse  |
 
 On touch devices a tap into the view shows on-screen controls instead (disable them with `touchControls: false`),
@@ -105,6 +107,7 @@ the page scrolls as usual with touches on the view until then:
 | ▲ / ▼                 | up / down, ▲ jumps in the walking mode |
 | Fast                  | toggle moving faster |
 | Walk                  | toggle walking mode |
+| Noclip                | toggle noclip (the flying camera passes through the terrain) |
 | ✕                     | close the controls |
 
 See [src/types.ts](src/types.ts) for all `ViewerOptions` and the `NodeDefinition` format.

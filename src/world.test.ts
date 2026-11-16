@@ -57,6 +57,13 @@ describe("World", () => {
         // not loaded
         expect(w.isSolid(16, 0, 0)).toBe(true)
         expect(w.isSolid(-1, 0, 0)).toBe(true)
+
+        // obstacles of the flying camera: the same nodes, but nothing outside of the loaded mapblocks
+        expect(w.isObstacle(5, 0, 5)).toBe(true)
+        expect(w.isObstacle(5, 1, 5)).toBe(false)
+        expect(w.isObstacle(3, 1, 5)).toBe(false)
+        expect(w.isObstacle(16, 0, 0)).toBe(false)
+        expect(w.isObstacle(-1, 0, 0)).toBe(false)
     })
 
     it("copies the adjacent nodes of the neighbors", () => {

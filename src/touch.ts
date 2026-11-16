@@ -44,6 +44,8 @@ export type TouchHandlers = {
     look(dx: number, dy: number): void
     /** the walk/fly button was tapped */
     toggleWalking(): void
+    /** the noclip button was tapped */
+    toggleNoclip(): void
     /** the controls were closed by the user */
     deactivated(): void
 }
@@ -57,6 +59,8 @@ export type TouchControls = {
     deactivate(): void
     /** reflects the current mode in the buttons */
     setWalking(walking: boolean): void
+    /** reflects the noclip setting of the flying camera in its button */
+    setNoclip(noclip: boolean): void
 }
 
 const BUTTON_STYLE = "position:absolute;width:52px;height:52px;padding:0;border-radius:50%;box-sizing:border-box;"
@@ -68,7 +72,7 @@ const BUTTON_ACTIVE_BACKGROUND = "rgba(255,255,255,.4)"
 /**
  * On-screen controls for touch devices, hidden until they are activated:
  * the left half of the view is a joystick that appears below the finger, a drag anywhere else looks around
- * and buttons move up/down (jump while walking), toggle the fast and the walking mode and close the controls.
+ * and buttons move up/down (jump while walking), toggle the fast mode, noclip and the walking mode and close the controls.
  */
 export function createTouchControls(container: HTMLElement, handlers: TouchHandlers): TouchControls {
     const input: TouchInput = { forward: 0, right: 0, up: 0, fast: false }
@@ -203,6 +207,10 @@ export function createTouchControls(container: HTMLElement, handlers: TouchHandl
     const walk = addButton("Walk", "Walking mode", right(1) + bottom(1))
     walk.addEventListener("click", () => handlers.toggleWalking())
 
+    const noclip = addButton("Noclip", "Fly through the terrain", right(1) + bottom(2))
+    noclip.style.fontSize = "12px"
+    noclip.addEventListener("click", () => handlers.toggleNoclip())
+
     const close = addButton("✕", "Close the touch controls",
         "width:40px;height:40px;left:calc(8px + env(safe-area-inset-left, 0px));"
         + "top:calc(8px + env(safe-area-inset-top, 0px));")
@@ -229,6 +237,9 @@ export function createTouchControls(container: HTMLElement, handlers: TouchHandl
             // there is no way down while walking
             down.release()
             down.button.style.display = walking ? "none" : "block"
-        }
+            // noclip only applies to the flying camera
+            noclip.style.display = walking ? "none" : "block"
+        },
+        setNoclip: enabled => highlight(noclip, enabled)
     }
 }

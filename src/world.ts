@@ -49,13 +49,25 @@ export class World {
      * walkable nodes and positions without a loaded mapblock (the player waits for them)
      */
     isSolid(x: number, y: number, z: number): boolean {
+        return this.blocksAt(x, y, z, true)
+    }
+
+    /**
+     * true if a loaded walkable node is at the given node position (engine coordinates),
+     * unlike `isSolid` positions without a loaded mapblock are free: the flying camera is not held back by them
+     */
+    isObstacle(x: number, y: number, z: number): boolean {
+        return this.blocksAt(x, y, z, false)
+    }
+
+    private blocksAt(x: number, y: number, z: number, unloaded: boolean): boolean {
         const bx = Math.floor(x / MAPBLOCK_SIZE), by = Math.floor(y / MAPBLOCK_SIZE), bz = Math.floor(z / MAPBLOCK_SIZE)
         const block = this.blocks.get(key(bx, by, bz))
         if (!block) {
-            return true
+            return unloaded
         }
         const id = block.ids[getNodeIndex(x - bx * MAPBLOCK_SIZE, y - by * MAPBLOCK_SIZE, z - bz * MAPBLOCK_SIZE)]!
-        return id === CONTENT_IGNORE || this.nodes.infos[id]!.walkable
+        return id === CONTENT_IGNORE ? unloaded : this.nodes.infos[id]!.walkable
     }
 
     /** copies the nodes of a mapblock and the adjacent nodes of its 26 neighbors into the padded arrays */

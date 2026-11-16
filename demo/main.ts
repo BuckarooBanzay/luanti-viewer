@@ -79,6 +79,8 @@ async function main() {
     options.timeOfDay = slider.valueAsNumber
     // optional walking mode with gravity and collision: ?walk
     options.collision = params.has("walk")
+    // optional flying through the terrain: ?noclip
+    options.noclip = params.has("noclip")
     const viewer = createView(element, options)
     slider.addEventListener("input", () => viewer.setTimeOfDay(slider.valueAsNumber))
 }

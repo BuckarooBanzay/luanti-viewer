@@ -193,8 +193,13 @@ export type ViewerOptions = {
      */
     collision?: boolean|null
     /**
+     * let the free flying camera pass through the terrain, defaults to false: the camera is stopped by
+     * walkable nodes (as full nodes) and only passes through mapblocks that are not loaded
+     */
+    noclip?: boolean|null
+    /**
      * On-screen controls for touch devices, shown after a tap into the view: a joystick on the left half,
-     * drag to look around and buttons for up/down, fast and the walking mode. Touches scroll the page
+     * drag to look around and buttons for up/down, fast, noclip and the walking mode. Touches scroll the page
      * as usual until then and after the controls are closed. Defaults to true.
      */
     touchControls?: boolean|null
@@ -221,4 +226,9 @@ export type Viewer = {
      * and the free flying camera, the user can also toggle it with the C key or the touch controls
      */
     setCollision(enabled: boolean): void
+    /**
+     * lets the free flying camera pass through the terrain (true) or stops it at walkable nodes (false),
+     * the user can also toggle it with the H key or the touch controls
+     */
+    setNoclip(enabled: boolean): void
 }
