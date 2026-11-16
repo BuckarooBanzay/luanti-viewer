@@ -192,6 +192,12 @@ export type ViewerOptions = {
      * opt-in, defaults to false
      */
     collision?: boolean|null
+    /**
+     * On-screen controls for touch devices, shown after a tap into the view: a joystick on the left half,
+     * drag to look around and buttons for up/down, fast and the walking mode. Touches scroll the page
+     * as usual until then and after the controls are closed. Defaults to true.
+     */
+    touchControls?: boolean|null
 
     /** callbacks for changes in the viewer */
     events?: {
@@ -212,7 +218,7 @@ export type Viewer = {
     setTimeOfDay(tod: number): void
     /**
      * switches between the walking mode (gravity and collision with the terrain, Space jumps)
-     * and the free flying camera, the user can also toggle it with the C key
+     * and the free flying camera, the user can also toggle it with the C key or the touch controls
      */
     setCollision(enabled: boolean): void
 }

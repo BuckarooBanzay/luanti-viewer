@@ -95,6 +95,18 @@ Click into the view to capture the mouse and look around.
 | C           | toggle walking mode (gravity and collision, Space jumps) |
 | Esc / T     | release the mouse  |
 
+On touch devices a tap into the view shows on-screen controls instead (disable them with `touchControls: false`),
+the page scrolls as usual with touches on the view until then:
+
+| Touch                 | Action             |
+|-----------------------|--------------------|
+| drag on the left half | move (joystick)    |
+| drag anywhere else    | look around        |
+| ▲ / ▼                 | up / down, ▲ jumps in the walking mode |
+| Fast                  | toggle moving faster |
+| Walk                  | toggle walking mode |
+| ✕                     | close the controls |
+
 See [src/types.ts](src/types.ts) for all `ViewerOptions` and the `NodeDefinition` format.
 
 ## Exporting a map

@@ -1,6 +1,6 @@
 import {
-    BufferAttribute, BufferGeometry, Box3, Color, Fog, Frustum, Group, Matrix4, Mesh, PerspectiveCamera, Scene,
-    Vector3, WebGLRenderer
+    BufferAttribute, BufferGeometry, Box3, Color, Euler, Fog, Frustum, Group, Matrix4, Mesh, PerspectiveCamera,
+    Scene, Vector3, WebGLRenderer
 } from "three"
 import { PLAYER_EYE_HEIGHT, collide, isFree } from "./physics.js"
 import { PointerLockControls } from "three/examples/jsm/controls/PointerLockControls.js"
@@ -13,6 +13,7 @@ import { parseB3d } from "./models/b3d.js"
 import type { Model } from "./models/model.js"
 import { parseObj } from "./models/obj.js"
 import { TextureCompositor, type RgbaImage } from "./texture/compositor.js"
+import { applyLook, createTouchControls } from "./touch.js"
 import type { MapblockPosition, Viewer, ViewerCamera, ViewerOptions } from "./types.js"
 import { World } from "./world.js"
 
@@ -135,6 +136,7 @@ async function decodeImage(blob: Blob): Promise<RgbaImage> {
  * First person camera: a click into the view captures the mouse (pointer lock) to look around,
  * W/A/S/D moves, Space/Shift moves up/down, E moves faster and Esc or T releases the mouse.
  * C toggles the walking mode (see `ViewerOptions.collision`): gravity and collision with the terrain, Space jumps.
+ * On touch devices a tap into the view shows on-screen controls instead (see `ViewerOptions.touchControls`).
  * All resources are released once the element is removed from the document.
  */
 export function createView(element: HTMLElement, options: ViewerOptions): Viewer {
@@ -224,7 +226,23 @@ export function createView(element: HTMLElement, options: ViewerOptions): Viewer
     hint.style.cssText = "position:absolute;left:50%;top:8px;transform:translateX(-50%);padding:4px 8px;"
         + "border-radius:4px;font:12px/1.4 system-ui,sans-serif;color:#fff;background:rgba(0,0,0,.55);"
         + "pointer-events:none;white-space:nowrap"
-    hint.textContent = "Click to look around \u00b7 WASD to move \u00b7 Space/Shift up/down \u00b7 E fast \u00b7 C walk/fly \u00b7 Esc/T to release"
+    const keyboardHint = "Click to look around \u00b7 WASD to move \u00b7 Space/Shift up/down \u00b7 E fast \u00b7 C walk/fly \u00b7 Esc/T to release"
+
+    // touch devices: on-screen controls instead of the pointer lock, the camera is turned by drags
+    const lookEuler = new Euler(0, 0, 0, "YXZ")
+    const touch = options.touchControls === false ? null : createTouchControls(container, {
+        look: (dx, dy) => {
+            lookEuler.setFromQuaternion(camera.quaternion)
+            const { yaw, pitch } = applyLook(lookEuler.y, lookEuler.x, dx, dy)
+            lookEuler.set(pitch, yaw, 0)
+            camera.quaternion.setFromEuler(lookEuler)
+        },
+        toggleWalking: () => setCollision(!walking),
+        deactivated: () => hint.style.display = "block"
+    })
+    hint.textContent = touch && window.matchMedia?.("(pointer: coarse)").matches
+        ? "Tap to look around and move"
+        : keyboardHint
     container.appendChild(hint)
 
     // keys are only handled while the mouse is captured, the embedding page keeps its keyboard otherwise
@@ -248,7 +266,18 @@ export function createView(element: HTMLElement, options: ViewerOptions): Viewer
         e.preventDefault()
     }
     const releaseKeys = () => pressed.clear()
-    const onClick = () => controls.lock()
+    // a tap shows the touch controls (the page scrolls with touches on the view until then), a click captures the mouse
+    let pointerType = "mouse"
+    const onPointerDown = (e: PointerEvent) => pointerType = e.pointerType
+    const onClick = () => {
+        if (touch && pointerType === "touch") {
+            touch.activate()
+            hint.style.display = "none"
+        } else {
+            controls.lock()
+        }
+    }
+    renderer.domElement.addEventListener("pointerdown", onPointerDown)
     renderer.domElement.addEventListener("click", onClick)
     window.addEventListener("keydown", onKey)
     window.addEventListener("keyup", onKey)
@@ -260,16 +289,25 @@ export function createView(element: HTMLElement, options: ViewerOptions): Viewer
     })
 
     const forward = new Vector3()
-    const axis = (positive: string, negative: string) => (pressed.has(positive) ? 1 : 0) - (pressed.has(negative) ? 1 : 0)
+    // keys and touch controls combined, each axis -1..1 (analog with the joystick)
+    const axis = (positive: string, negative: string, analog = 0) =>
+        Math.max(-1, Math.min(1, (pressed.has(positive) ? 1 : 0) - (pressed.has(negative) ? 1 : 0) + analog))
+    const forwardAxis = () => axis("KeyW", "KeyS", touch?.input.forward)
+    const rightAxis = () => axis("KeyD", "KeyA", touch?.input.right)
+    const fastFactor = () => pressed.has("KeyE") || touch?.input.fast ? FAST_FACTOR : 1
     const flyMove = (dt: number) => {
-        const distance = MOVE_SPEED * (pressed.has("KeyE") ? FAST_FACTOR : 1) * dt
-        const f = axis("KeyW", "KeyS"), r = axis("KeyD", "KeyA")
-        const u = (pressed.has("Space") ? 1 : 0) - (pressed.has("ShiftLeft") || pressed.has("ShiftRight") ? 1 : 0)
+        const distance = MOVE_SPEED * fastFactor() * dt
+        const f = forwardAxis(), r = rightAxis()
+        const u = axis("Space", pressed.has("ShiftRight") ? "ShiftRight" : "ShiftLeft", touch?.input.up)
         if (f === 0 && r === 0 && u === 0) {
             return
         }
         // diagonal movement is not faster than straight movement
-        forward.set(r, u, f).normalize().multiplyScalar(distance)
+        forward.set(r, u, f)
+        if (forward.lengthSq() > 1) {
+            forward.normalize()
+        }
+        forward.multiplyScalar(distance)
         controls.moveForward(forward.z)
         controls.moveRight(forward.x)
         camera.position.y += forward.y
@@ -298,16 +336,17 @@ export function createView(element: HTMLElement, options: ViewerOptions): Viewer
         camera.getWorldDirection(look)
         look.y = 0
         let dx = 0, dz = 0
-        const f = axis("KeyW", "KeyS"), r = axis("KeyD", "KeyA")
+        const f = forwardAxis(), r = rightAxis()
         if ((f !== 0 || r !== 0) && look.lengthSq() > 1e-8) {
             look.normalize()
-            const speed = WALK_SPEED * (pressed.has("KeyE") ? FAST_FACTOR : 1) / Math.hypot(f, r)
+            // diagonal movement is not faster than straight movement
+            const speed = WALK_SPEED * fastFactor() / Math.max(Math.hypot(f, r), 1)
             // three.js: right = (-look.z, look.x), x is mirrored for the world
             const tx = (look.x * f - look.z * r) * speed * dt, tz = (look.z * f + look.x * r) * speed * dt
             dx = -tx
             dz = tz
         }
-        if (onGround && pressed.has("Space")) {
+        if (onGround && (pressed.has("Space") || (touch?.input.up ?? 0) > 0)) {
             verticalSpeed = JUMP_SPEED
         }
         verticalSpeed = Math.max(verticalSpeed - GRAVITY * dt, -MAX_FALL_SPEED)
@@ -327,6 +366,7 @@ export function createView(element: HTMLElement, options: ViewerOptions): Viewer
             verticalSpeed = 0
             onGround = false
         }
+        touch?.setWalking(walking)
     }
     setCollision(options.collision ?? false)
 
@@ -393,6 +433,7 @@ export function createView(element: HTMLElement, options: ViewerOptions): Viewer
         disposed = true
         renderer.setAnimationLoop(null)
         resizeObserver.disconnect()
+        renderer.domElement.removeEventListener("pointerdown", onPointerDown)
         renderer.domElement.removeEventListener("click", onClick)
         window.removeEventListener("keydown", onKey)
         window.removeEventListener("keyup", onKey)
