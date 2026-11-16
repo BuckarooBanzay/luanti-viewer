@@ -8,6 +8,7 @@ dofile(MP .. "/encoding.lua")
 dofile(MP .. "/nodedefs.lua")
 dofile(MP .. "/textures.lua")
 dofile(MP .. "/export.lua")
+dofile(MP .. "/demo.lua")
 
 local range = 20
 local mb_pos1 = vector.new(-range, -2, -range)
@@ -24,6 +25,7 @@ if minetest.settings:get_bool("export_mod_autoexport") then
             local pos2 = vector.multiply(mb_pos2, 16)
             minetest.emerge_area(pos1, pos2, function(_, _, calls_remaining)
                 if calls_remaining == 0 then
+                    mtwebview.place_meselamps(vector.new(0, 0, 0), 20, 16)
                     mtwebview.export_map(mb_pos1, mb_pos2)
                     minetest.request_shutdown("done")
                 end
