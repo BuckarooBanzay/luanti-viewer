@@ -7,6 +7,3 @@
 [submodule "worldmods/worldedit"]
 	path = worldmods/worldedit
 	url = https://github.com/Uberi/Minetest-WorldEdit
-[submodule "worldmods/scifi_nodes"]
-	path = worldmods/scifi_nodes
-	url = https://github.com/D00Med/scifi_nodes.git

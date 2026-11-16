@@ -26,7 +26,6 @@ if minetest.settings:get_bool("export_mod_autoexport") then
             minetest.emerge_area(pos1, pos2, function(_, _, calls_remaining)
                 if calls_remaining == 0 then
                     mtwebview.place_meselamps(vector.new(0, 0, 0), 20, 16)
-                    mtwebview.place_mod_carpet("scifi_nodes", vector.new(0, 20, 20))
                     mtwebview.export_map(mb_pos1, mb_pos2)
                     minetest.request_shutdown("done")
                 end
