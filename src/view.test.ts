@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest"
 import { splitFrames } from "./materials.js"
 import { MeshBuffer } from "./mesh/mesher.js"
 import { createImage } from "./texture/compositor.js"
-import { createGeometry, timeToDayNightRatio } from "./view.js"
+import { createGeometry, timeToDayNightRatio } from "./scene.js"
 
 describe("createGeometry", () => {
     it("converts the left-handed output of the mesher for three.js", () => {

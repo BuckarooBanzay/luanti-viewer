@@ -4,3 +4,4 @@ export {
     type Node, type RawMapblock
 } from "./mapblock.js"
 export type * from "./types.js"
+export { createNodeView } from "./nodeview.js"

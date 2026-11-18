@@ -121,6 +121,43 @@ the page scrolls as usual with touches on the view until then:
 
 See [src/types.ts](src/types.ts) for all `ViewerOptions` and the `NodeDefinition` format.
 
+### Single node
+
+`createNodeView` shows one node in the center of the view instead of a map, e.g. as a preview in a node list.
+Drag to orbit around the node, scroll (or pinch) to zoom; the view captures these gestures, the page doesn't scroll over it.
+The camera is fitted to the node, including nodes larger than one node like doors or meshes.
+
+```ts
+import { createNodeView } from "@buckaroobanzay/luanti-viewer"
+
+const nodeViewer = createNodeView(document.getElementById("preview")!, {
+    nodedefinition: definitions.get("default:chest")!,
+    getMedia: async filename => {
+        const response = await fetch(`/media/${encodeURI(filename)}`)
+        return response.ok ? response.blob() : null
+    },
+
+    // optional: rotation, palette index, level... depending on the paramtype2,
+    // defaults to 0 (wallmounted nodes: 1, standing on the floor)
+    param2: 0,
+    // optional: initial time of day, 0 = midnight, 0.5 = noon (default)
+    timeOfDay: 0.5,
+    // optional: css color or number, null for a transparent background, defaults to the sky color
+    background: null,
+    // optional: slowly turn around the node
+    autoRotate: true
+})
+
+nodeViewer.setTimeOfDay(0) // only nodes with a light_source stay bright
+nodeViewer.setAutoRotate(false)
+// show another node in the same view, textures and models are reused
+nodeViewer.setNodeDefinition(definitions.get("default:torch")!)
+```
+
+Browsers limit the number of WebGL contexts per page (~16), every view uses one. To browse through many nodes,
+reuse a view with `setNodeDefinition` instead of creating one per node. A view that is scrolled out of sight
+doesn't render, and it's released once its element is removed from the document, like `createView`.
+
 ## Exporting a map
 
 The [export mod](worldmods/export_mod) writes everything the viewer needs into the `mtwebview` directory of the world:
@@ -157,3 +194,4 @@ npm run build        # library build into ./dist (bundle + type declarations)
 Publishing a GitHub release with a tag like `v1.2.3` runs [the publish workflow](.github/workflows/publish.yml). It tests the package, sets the version from the tag, builds it and publishes it to npm with [provenance](https://docs.npmjs.com/generating-provenance-statements). Releases marked as pre-release are published under the `next` dist-tag instead of `latest`. The workflow authenticates through npm [trusted publishing](https://docs.npmjs.com/trusted-publishers), so no token secret is needed.
 
 The demo takes a few URL parameters: `?scene=showcase` (one example of each drawtype), `?camera=x,y,z&target=x,y,z`, `?range=4` and `?fps`.
+`?scene=node` opens the single node viewer (`createNodeView`) with all exported nodes, `&node=default:chest&param2=0&rotate` selects the node.

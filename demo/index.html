@@ -20,9 +20,17 @@
             position: absolute;
             top: 8px;
             left: 8px;
+            right: 8px;
             z-index: 1;
             display: flex;
+            flex-wrap: wrap;
+            align-items: flex-start;
             gap: 4px;
+            pointer-events: none;
+        }
+        nav > * {
+            pointer-events: auto;
+            white-space: nowrap;
         }
         nav a {
             padding: 4px 10px;
@@ -40,6 +48,22 @@
             color: #fff;
             background: rgba(0, 0, 0, .55);
         }
+        nav input:not([type]), nav input[type=number] {
+            font: inherit;
+        }
+        nav input[list] {
+            width: 220px;
+        }
+        nav input[type=number] {
+            width: 56px;
+        }
+        nav button {
+            font: inherit;
+            padding: 0 6px;
+        }
+        nav [hidden] {
+            display: none;
+        }
         nav a.active {
             background: rgba(255, 255, 255, .9);
             color: #000;
@@ -50,6 +74,15 @@
     <nav>
         <a href="./" id="link-export">exported map</a>
         <a href="./?scene=showcase" id="link-showcase">drawtype showcase</a>
+        <a href="./?scene=node" id="link-node">node viewer</a>
+        <label id="node-controls" hidden>
+            <button type="button" id="node-prev" title="previous node">&#9664;</button>
+            <input id="node-name" list="node-names" spellcheck="false" autocomplete="off">
+            <button type="button" id="node-next" title="next node">&#9654;</button>
+            param2 <input type="number" id="node-param2" min="0" max="255" placeholder="auto">
+            rotate <input type="checkbox" id="node-rotate">
+        </label>
+        <datalist id="node-names"></datalist>
         <label>time of day <input type="range" id="time" min="0" max="1" step="0.005" value="0.5"></label>
     </nav>
     <div id="view"></div>

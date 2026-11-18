@@ -1,4 +1,4 @@
-import { createView, parseMapblock, type MapblockPosition, type NodeDefinition, type ViewerOptions } from "../src"
+import { createNodeView, createView, parseMapblock, type MapblockPosition, type NodeDefinition, type ViewerOptions } from "../src"
 import { createShowcase } from "./showcase"
 
 /** the scene export is served from the root of the dev server (see vite.config.ts) */
@@ -26,11 +26,17 @@ async function getMapblock(pos: MapblockPosition) {
 async function main() {
     const element = document.getElementById("view")!
     const params = new URLSearchParams(location.search)
-    const showcase = params.get("scene") === "showcase"
-    document.getElementById(showcase ? "link-showcase" : "link-export")!.classList.add("active")
+    const scene = params.get("scene")
+    const showcase = scene === "showcase"
+    document.getElementById(showcase ? "link-showcase" : scene === "node" ? "link-node" : "link-export")!
+        .classList.add("active")
 
     const nodeDefinitions = fetchJson<Record<string, NodeDefinition>>("nodedefs.json")
         .then(defs => new Map(Object.entries(defs)))
+
+    if (scene === "node") {
+        return nodeViewer(element, params, await nodeDefinitions)
+    }
 
     let options: ViewerOptions
     if (showcase) {
@@ -83,6 +89,79 @@ async function main() {
     options.noclip = params.has("noclip")
     const viewer = createView(element, options)
     slider.addEventListener("input", () => viewer.setTimeOfDay(slider.valueAsNumber))
+}
+
+/**
+ * single node with createNodeView: ?scene=node&node=default:chest&param2=0&rotate
+ * one view is reused for all nodes with setNodeDefinition
+ */
+function nodeViewer(element: HTMLElement, params: URLSearchParams, definitions: Map<string, NodeDefinition>) {
+    const names = [...definitions.keys()]
+        .filter(name => name !== "air" && name !== "ignore" && definitions.get(name)!.drawtype !== "airlike")
+        .sort()
+    const nameInput = document.getElementById("node-name") as HTMLInputElement
+    const param2Input = document.getElementById("node-param2") as HTMLInputElement
+    const rotateInput = document.getElementById("node-rotate") as HTMLInputElement
+    const slider = document.getElementById("time") as HTMLInputElement
+    document.getElementById("node-controls")!.hidden = false
+    document.getElementById("node-names")!.append(...names.map(name => new Option("", name)))
+
+    let current = definitions.has(params.get("node") ?? "") ? params.get("node")! : "default:chest"
+    nameInput.value = current
+    // empty: the default of the view (e.g. wallmounted nodes on the floor)
+    param2Input.value = params.get("param2") ?? ""
+    rotateInput.checked = params.has("rotate")
+    if (params.has("time")) {
+        slider.value = params.get("time")!
+    }
+
+    const viewer = createNodeView(element, {
+        nodedefinition: definitions.get(current)!,
+        param2: param2Input.value === "" ? null : param2Input.valueAsNumber,
+        getMedia,
+        timeOfDay: slider.valueAsNumber,
+        autoRotate: rotateInput.checked
+    })
+
+    /** shows the node in the inputs (if valid), keeps it in the url to survive a reload */
+    const show = (name: string) => {
+        const def = definitions.get(name)
+        if (!def) {
+            return
+        }
+        current = name
+        nameInput.value = name
+        const param2 = Number.isNaN(param2Input.valueAsNumber) ? null : Math.min(Math.max(param2Input.valueAsNumber, 0), 255)
+        viewer.setNodeDefinition(def, param2)
+        const url = new URL(location.href)
+        url.searchParams.set("node", name)
+        if (param2 === null) {
+            url.searchParams.delete("param2")
+        } else {
+            url.searchParams.set("param2", String(param2))
+        }
+        history.replaceState(null, "", url)
+    }
+    const step = (delta: number) => {
+        const index = names.indexOf(current)
+        show(names[(index + delta + names.length) % names.length]!)
+    }
+
+    nameInput.addEventListener("change", () => show(nameInput.value.trim()))
+    param2Input.addEventListener("input", () => show(current))
+    document.getElementById("node-prev")!.addEventListener("click", () => step(-1))
+    document.getElementById("node-next")!.addEventListener("click", () => step(1))
+    slider.addEventListener("input", () => viewer.setTimeOfDay(slider.valueAsNumber))
+    rotateInput.addEventListener("change", () => {
+        viewer.setAutoRotate(rotateInput.checked)
+        const url = new URL(location.href)
+        if (rotateInput.checked) {
+            url.searchParams.set("rotate", "")
+        } else {
+            url.searchParams.delete("rotate")
+        }
+        history.replaceState(null, "", url)
+    })
 }
 
 main().catch(e => {
