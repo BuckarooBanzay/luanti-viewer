@@ -4,12 +4,12 @@
  * lighting.
  */
 import {
-    BufferAttribute, BufferGeometry, DataTexture, DoubleSide, FrontSide, Group, Mesh, MeshBasicMaterial,
+    BufferAttribute, BufferGeometry, Color, DataTexture, DoubleSide, FrontSide, Group, Mesh, MeshBasicMaterial,
     MeshStandardMaterial, NearestFilter, RepeatWrapping, RGBAFormat, SRGBColorSpace, Scene, UnsignedByteType,
     type Camera, type Material, type Texture
 } from "three"
 import { MAPBLOCK_SIZE } from "./mapblock.js"
-import { createNeighborhood, type MapblockMesher, type MeshBuffer } from "./mesh/mesher.js"
+import { createNeighborhood, LIGHT_CURVE, MeshBuffer, type MapblockMesher } from "./mesh/mesher.js"
 import type { TileSpec } from "./mesh/nodes.js"
 import type { RgbaImage } from "./texture/compositor.js"
 import type { ExportMode, MapblockPosition } from "./types.js"
@@ -30,9 +30,14 @@ export type ExportSceneOptions = {
     dayNightRatio: number
     /** added to the scene (as a copy) if set */
     camera?: Camera | null
+    /** raw mode: emission strength of light sources, multiplied with their brightness, defaults to 1 */
+    emissiveStrength?: number
 }
 
 type Chunk = { buffer: MeshBuffer, origin: MapblockPosition }
+
+/** light sources get their own (emissive) meshes in the raw mode, one per light level */
+const LIGHT_LEVELS = 15
 
 /**
  * Meshes the given mapblocks of the world and merges them into one mesh per tile, in three.js coordinates
@@ -51,13 +56,17 @@ export async function buildExportScene(
         }
         world.fillNeighborhood(pos, neighborhood)
         const origin = { x: pos.x * MAPBLOCK_SIZE, y: pos.y * MAPBLOCK_SIZE, z: pos.z * MAPBLOCK_SIZE }
-        for (const [tile, buffer] of mesher.mesh(neighborhood, origin)) {
-            let list = chunks.get(tile)
-            if (!list) {
-                list = []
-                chunks.set(tile, list)
+        for (const [tile, tileBuffer] of mesher.mesh(neighborhood, origin)) {
+            const parts = options.mode === "raw" ? splitByLightSource(tileBuffer) : new Map([[0, tileBuffer]])
+            for (const [level, buffer] of parts) {
+                const key = tile * LIGHT_LEVELS + level
+                let list = chunks.get(key)
+                if (!list) {
+                    list = []
+                    chunks.set(key, list)
+                }
+                list.push({ buffer, origin })
             }
-            list.push({ buffer, origin })
         }
         if (++count % YIELD_INTERVAL === 0) {
             await new Promise(resolve => setTimeout(resolve, 0))
@@ -84,11 +93,12 @@ export async function buildExportScene(
     }
 
     const sorted = [...chunks.entries()].sort(([a], [b]) => a - b)
-    const meshes = await Promise.all(sorted.map(async ([tile, list]) => {
+    const meshes = await Promise.all(sorted.map(async ([key, list]) => {
+        const tile = Math.floor(key / LIGHT_LEVELS), lightSource = key % LIGHT_LEVELS
         const spec = tiles.getTileSpec(tile)
         const geometry = mergeChunks(list, options)
         const material = createExportMaterial(spec, await textureOf(tile), options.mode,
-            geometry.getAttribute("color") !== undefined)
+            geometry.getAttribute("color") !== undefined, lightSource, options.emissiveStrength ?? 1)
         const mesh = new Mesh(geometry, material)
         mesh.name = material.name
         return mesh
@@ -108,6 +118,42 @@ export async function buildExportScene(
 /** gamma space blend of the day and night light, like the shader of the view */
 export function bakeLight(nightFactor: number, dayNightRatio: number): number {
     return Math.pow(nightFactor + (1 - nightFactor) * dayNightRatio, 2.2)
+}
+
+/**
+ * splits a buffer by the `light_source` of its nodes (triangles by their first vertex),
+ * the buffer is returned as it is if it has no light sources
+ */
+export function splitByLightSource(buffer: MeshBuffer): Map<number, MeshBuffer> {
+    if (!buffer.lightSources.some(level => level > 0)) {
+        return new Map([[0, buffer]])
+    }
+    const parts = new Map<number, { buffer: MeshBuffer, remap: Map<number, number> }>()
+    for (let i = 0; i < buffer.indices.length; i += 3) {
+        const level = buffer.lightSources[buffer.indices[i]!] ?? 0
+        let part = parts.get(level)
+        if (!part) {
+            part = { buffer: new MeshBuffer(), remap: new Map() }
+            parts.set(level, part)
+        }
+        const { buffer: target, remap } = part
+        for (let k = 0; k < 3; k++) {
+            const source = buffer.indices[i + k]!
+            let index = remap.get(source)
+            if (index === undefined) {
+                index = target.vertexCount
+                remap.set(source, index)
+                target.positions.push(buffer.positions[source * 3]!, buffer.positions[source * 3 + 1]!, buffer.positions[source * 3 + 2]!)
+                target.uvs.push(buffer.uvs[source * 2]!, buffer.uvs[source * 2 + 1]!)
+                target.colors.push(buffer.colors[source * 3]!, buffer.colors[source * 3 + 1]!, buffer.colors[source * 3 + 2]!)
+                target.baseColors.push(buffer.baseColors[source * 3]!, buffer.baseColors[source * 3 + 1]!, buffer.baseColors[source * 3 + 2]!)
+                target.nightFactors.push(buffer.nightFactors[source] ?? 1)
+                target.lightSources.push(level)
+            }
+            target.indices.push(index)
+        }
+    }
+    return new Map([...parts].map(([level, part]) => [level, part.buffer]))
 }
 
 /** concatenates the buffers of a tile, positions are moved to the mapblock origin and mirrored on x */
@@ -188,9 +234,11 @@ function createExportTexture(image: RgbaImage): Texture {
     return texture
 }
 
-function createExportMaterial(spec: TileSpec, map: Texture, mode: ExportMode, vertexColors: boolean): Material {
+function createExportMaterial(
+    spec: TileSpec, map: Texture, mode: ExportMode, vertexColors: boolean, lightSource: number, emissiveStrength: number
+): Material {
     const params = {
-        name: spec.texture,
+        name: lightSource > 0 ? `${spec.texture} (light ${lightSource})` : spec.texture,
         map,
         vertexColors,
         side: spec.backfaceCulling ? FrontSide : DoubleSide,
@@ -199,9 +247,17 @@ function createExportMaterial(spec: TileSpec, map: Texture, mode: ExportMode, ve
         depthWrite: spec.alpha !== "blend"
     }
     // baked: unlit (KHR_materials_unlit), the light is in the vertex colors
-    return mode === "raw"
-        ? new MeshStandardMaterial({ ...params, roughness: 1, metalness: 0 })
-        : new MeshBasicMaterial(params)
+    if (mode !== "raw") {
+        return new MeshBasicMaterial(params)
+    }
+    const material = new MeshStandardMaterial({ ...params, roughness: 1, metalness: 0 })
+    if (lightSource > 0) {
+        // light sources glow with their texture, as bright as their light level (linear, like the vertex colors)
+        material.emissive = new Color().setScalar(Math.pow(LIGHT_CURVE[lightSource]!, 2.2))
+        material.emissiveMap = map
+        material.emissiveIntensity = emissiveStrength
+    }
+    return material
 }
 
 /** releases the geometries, materials and textures of an export scene */

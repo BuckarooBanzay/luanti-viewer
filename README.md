@@ -108,7 +108,9 @@ const blob = await viewer.exportGLTF({
     // optional: time of day of the baked light, defaults to the current one
     timeOfDay: 0.5,
     // optional: include the camera, defaults to true
-    camera: true
+    camera: true,
+    // optional, raw mode: emission strength of light sources, defaults to 1
+    emissiveStrength: 5
 })
 const link = document.createElement("a")
 link.href = URL.createObjectURL(blob)
@@ -120,6 +122,12 @@ link.click()
 |---------|-----------|---------------|---------|
 | `baked` | unlit (`KHR_materials_unlit`) | node color and the light of the viewer at the given time of day | the same look as in the viewer |
 | `raw`   | lit (PBR, roughness 1) with normals | node color only, left out if it is white everywhere | rendering with blender's own lights (Cycles / EEVEE), add a sun and a sky |
+
+In the raw mode, nodes with a `light_source` (lamps, torches, lava, ...) get their own material per light level
+(named e.g. `default_meselamp.png (light 14)`): their texture is emitted with the brightness of the light level.
+`emissiveStrength` multiplies it (`KHR_materials_emissive_strength`), values above 1 let the lamps light up
+their surroundings in Cycles. Older blender versions ignore this extension (strength 1), the strength can also be
+set on the materials in blender.
 
 Animated textures are exported with their first frame. In blender the scene is in engine coordinates rotated
 to Z-up: blender (X, Y, Z) = engine (-x, -z, y). The three.js `GLTFExporter` is loaded on the first export only.

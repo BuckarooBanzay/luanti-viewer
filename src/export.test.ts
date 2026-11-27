@@ -3,7 +3,7 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest"
 import { Mesh, MeshBasicMaterial, MeshStandardMaterial, PerspectiveCamera, type DataTexture, type Scene } from "three"
 import { bakeLight, buildExportScene, writeGLTF, type ExportTiles } from "./export.js"
 import { MAPBLOCK_VOLUME, ParsedMapblock, getNodeIndex } from "./mapblock.js"
-import { MapblockMesher } from "./mesh/mesher.js"
+import { LIGHT_CURVE, MapblockMesher } from "./mesh/mesher.js"
 import { NodeRegistry, type TileSpec } from "./mesh/nodes.js"
 import { createImage, type RgbaImage } from "./texture/compositor.js"
 import type { NodeDefinition } from "./types.js"
@@ -14,6 +14,7 @@ const definitions: NodeDefinition[] = [
     { ...base, paramtype: "light", name: "air", drawtype: "airlike" },
     { ...base, name: "stone", drawtype: "normal", tiles: ["stone.png"] },
     { ...base, name: "red", drawtype: "normal", tiles: ["stone.png"], color: "#ff0000" },
+    { ...base, name: "lamp", drawtype: "normal", tiles: ["stone.png"], light_source: 14 },
     { ...base, paramtype: "light", name: "water", drawtype: "liquid", tiles: ["water.png"], use_texture_alpha: "blend" }
 ]
 
@@ -50,11 +51,11 @@ async function setup() {
             new Map(names.map((name, i) => [i, name])))
     }
     const world = new World(nodes)
-    world.set({ x: 0, y: 0, z: 0 }, block([[0, 0, 0, "stone"], [5, 0, 0, "red"], [9, 9, 9, "water"]]))
+    world.set({ x: 0, y: 0, z: 0 }, block([[0, 0, 0, "stone"], [5, 0, 0, "red"], [9, 9, 9, "water"], [12, 0, 0, "lamp"]]))
     world.set({ x: 1, y: 0, z: 0 }, block([[0, 0, 0, "stone"]]))
     const positions = [{ x: 0, y: 0, z: 0 }, { x: 1, y: 0, z: 0 }, { x: 5, y: 5, z: 5 }]
-    const build = (mode: "baked" | "raw", dayNightRatio = 1, camera: PerspectiveCamera | null = null) =>
-        buildExportScene(world, positions, new MapblockMesher(nodes), tiles, { mode, dayNightRatio, camera })
+    const build = (mode: "baked" | "raw", dayNightRatio = 1, camera: PerspectiveCamera | null = null, emissiveStrength?: number) =>
+        buildExportScene(world, positions, new MapblockMesher(nodes), tiles, { mode, dayNightRatio, camera, emissiveStrength })
     return { nodes, world, build }
 }
 
@@ -69,8 +70,8 @@ describe("buildExportScene", () => {
     it("merges the mapblocks into one mesh per tile in three.js coordinates", async () => {
         const { build } = await setup()
         const scene = await build("raw")
-        // stone and red share the texture but not the color: same tile, merged
-        expect(meshes(scene).map(m => m.name).sort()).toEqual(["stone.png", "water.png"])
+        // stone and red share the texture but not the color: same tile, merged, the lamp has its own (emissive) mesh
+        expect(meshes(scene).map(m => m.name).sort()).toEqual(["stone.png", "stone.png (light 14)", "water.png"])
         const [stone] = byName(scene, "stone.png")
         const position = stone!.geometry.getAttribute("position")
         // three cubes with 6 faces of 4 vertices
@@ -129,6 +130,27 @@ describe("buildExportScene", () => {
         // all white: no vertex colors at all
         expect(water!.geometry.getAttribute("color")).toBeUndefined()
         expect((water!.material as MeshStandardMaterial).vertexColors).toBe(false)
+    })
+
+    it("makes light sources emissive in the raw mode", async () => {
+        const { build } = await setup()
+        const scene = await build("raw", 1, null, 5)
+        const stone = byName(scene, "stone.png")[0]!.material as MeshStandardMaterial
+        const lamp = byName(scene, "stone.png (light 14)")[0]!
+        const material = lamp.material as MeshStandardMaterial
+        expect(lamp.geometry.getAttribute("position").count).toBe(24)
+        // the lamp is at node x = 12, mirrored
+        expect(lamp.geometry.boundingSphere!.center.x).toBeCloseTo(-12)
+        expect(material.emissiveMap).toBe(material.map)
+        expect(material.emissive.r).toBeCloseTo(Math.pow(LIGHT_CURVE[14]!, 2.2))
+        expect(material.emissiveIntensity).toBe(5)
+        expect(stone.emissive.getHex()).toBe(0)
+        expect(stone.emissiveMap).toBeNull()
+
+        // the baked mode does not split the lamp off
+        const baked = await build("baked")
+        expect(byName(baked, "stone.png (light 14)")).toHaveLength(0)
+        expect(byName(baked, "stone.png")[0]!.geometry.getAttribute("position").count).toBe(4 * 24)
     })
 
     it("keeps the alpha mode, backface culling and texture orientation", async () => {
@@ -257,8 +279,14 @@ describe("writeGLTF", () => {
 
     it("writes lit materials and normals in the raw mode", async () => {
         const { build } = await setup()
-        const { json } = await parseGlb(await writeGLTF(await build("raw"), true))
+        const { json } = await parseGlb(await writeGLTF(await build("raw", 1, null, 5), true))
         expect(json.extensionsUsed ?? []).not.toContain("KHR_materials_unlit")
+        const lamp = json.materials.find((m: { name: string }) => m.name === "stone.png (light 14)")
+        const stone = json.materials.find((m: { name: string }) => m.name === "stone.png")
+        expect(lamp.emissiveTexture.index).toBe(lamp.pbrMetallicRoughness.baseColorTexture.index)
+        expect(lamp.emissiveFactor[0]).toBeCloseTo(Math.pow(LIGHT_CURVE[14]!, 2.2))
+        expect(lamp.extensions.KHR_materials_emissive_strength.emissiveStrength).toBe(5)
+        expect(stone.emissiveFactor).toBeUndefined()
         expect(json.materials[0].pbrMetallicRoughness).toMatchObject({ metallicFactor: 0, roughnessFactor: 1 })
         expect(json.meshes.every((m: { primitives: { attributes: object }[] }) => "NORMAL" in m.primitives[0]!.attributes)).toBe(true)
         expect(json.cameras).toBeUndefined()

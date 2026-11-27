@@ -595,7 +595,8 @@ export function createView(element: HTMLElement, options: ViewerOptions): Viewer
         const exportScene = await buildExportScene(exportWorld, positions, new MapblockMesher(nodes), materials, {
             mode: exportOptions.mode ?? "baked",
             dayNightRatio: timeToDayNightRatio(exportOptions.timeOfDay ?? timeOfDay),
-            camera: exportOptions.camera === false ? null : camera
+            camera: exportOptions.camera === false ? null : camera,
+            emissiveStrength: exportOptions.emissiveStrength
         })
         try {
             return await writeGLTF(exportScene, exportOptions.binary ?? true)

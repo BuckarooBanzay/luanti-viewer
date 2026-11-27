@@ -233,6 +233,12 @@ export type ExportOptions = {
     mode?: ExportMode
     /** time of day of the baked light (see `Viewer.setTimeOfDay`), defaults to the current one */
     timeOfDay?: number
+    /**
+     * raw mode: emission strength of light sources (nodes with a `light_source`), their texture is emitted
+     * with the brightness of their light level times this factor, defaults to 1 (as bright as the texture),
+     * higher values light up the surroundings in renderers like Cycles
+     */
+    emissiveStrength?: number
     /** include the current camera, defaults to true */
     camera?: boolean
     /** binary glTF (.glb) with embedded textures, otherwise .gltf with the textures as data urls, defaults to true */
