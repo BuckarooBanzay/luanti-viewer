@@ -48,6 +48,9 @@
             color: #fff;
             background: rgba(0, 0, 0, .55);
         }
+        nav select {
+            font: inherit;
+        }
         nav input:not([type]), nav input[type=number] {
             font: inherit;
         }
@@ -83,6 +86,13 @@
             rotate <input type="checkbox" id="node-rotate">
         </label>
         <datalist id="node-names"></datalist>
+        <label id="export-controls" hidden>
+            <select id="export-mode" title="baked: looks like the viewer, raw: lit by the renderer (e.g. Cycles)">
+                <option value="baked">baked light</option>
+                <option value="raw">raw (no light)</option>
+            </select>
+            <button type="button" id="export-button" title="export the loaded mapblocks as glTF (.glb), e.g. for blender">export .glb</button>
+        </label>
         <label>time of day <input type="range" id="time" min="0" max="1" step="0.005" value="0.5"></label>
     </nav>
     <div id="view"></div>

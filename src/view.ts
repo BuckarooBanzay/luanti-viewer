@@ -5,11 +5,12 @@ import { PLAYER_EYE_HEIGHT, collide, isFree } from "./physics.js"
 import { PointerLockControls } from "three/examples/jsm/controls/PointerLockControls.js"
 import { MapblockLoader, UNLOAD_MARGIN } from "./loader.js"
 import { MAPBLOCK_SIZE, type ParsedMapblock } from "./mapblock.js"
+import { buildExportScene, disposeExportScene, writeGLTF } from "./export.js"
 import { createNeighborhood, MapblockMesher } from "./mesh/mesher.js"
 import { NodeRegistry } from "./mesh/nodes.js"
 import { SKY_COLOR, createGeometry, createMediaLoader, skyColorAt, startRenderLoop, timeToDayNightRatio } from "./scene.js"
 import { applyLook, createTouchControls } from "./touch.js"
-import type { MapblockPosition, Viewer, ViewerCamera, ViewerOptions } from "./types.js"
+import type { ExportOptions, MapblockPosition, Viewer, ViewerCamera, ViewerOptions } from "./types.js"
 import { World } from "./world.js"
 
 /** parallel getMapblock / getMedia requests */
@@ -41,6 +42,8 @@ const MAX_VIEW_RANGE = 20
 const TARGET_DISTANCE = 1
 /** longest frame time used for the movement (seconds), a stalled tab does not teleport the camera */
 const MAX_FRAME_TIME = 0.1
+/** largest area (in mapblocks) of an export with explicit bounds */
+const MAX_EXPORT_VOLUME = 32768
 
 
 /**
@@ -350,7 +353,9 @@ export function createView(element: HTMLElement, options: ViewerOptions): Viewer
     const media = createMediaLoader(options.getMedia)
     const { materials } = media
 
+    let timeOfDay = 0.5
     const setTimeOfDay = (tod: number) => {
+        timeOfDay = tod
         const ratio = timeToDayNightRatio(tod)
         // the night light (artificial light) is not dimmed, the daylight down to the brightness of the night
         materials.dayNightRatio.value = ratio
@@ -543,5 +548,61 @@ export function createView(element: HTMLElement, options: ViewerOptions): Viewer
         })
     }
 
-    return { setTimeOfDay, setCollision, setNoclip, updateMapblock }
+    const exportGLTF = async (exportOptions: ExportOptions = {}): Promise<Blob> => {
+        const { minPos, maxPos } = exportOptions
+        if (!minPos !== !maxPos) {
+            throw new Error("minPos and maxPos have to be set together")
+        }
+        // a copy of the mapblocks: the view may load, unload or update its own ones while the export runs
+        const exportWorld = new World(nodes)
+        let positions: MapblockPosition[]
+        if (minPos && maxPos) {
+            const volume = (maxPos.x - minPos.x + 1) * (maxPos.y - minPos.y + 1) * (maxPos.z - minPos.z + 1)
+            if (!(volume > 0)) {
+                throw new Error("maxPos has to be greater than or equal to minPos")
+            }
+            if (volume > MAX_EXPORT_VOLUME) {
+                throw new Error(`the export area is too large: ${volume} mapblocks, at most ${MAX_EXPORT_VOLUME}`)
+            }
+            positions = []
+            for (let x = minPos.x; x <= maxPos.x; x++) {
+                for (let y = minPos.y; y <= maxPos.y; y++) {
+                    for (let z = minPos.z; z <= maxPos.z; z++) {
+                        positions.push({ x, y, z })
+                    }
+                }
+            }
+            // mapblocks that are not loaded are fetched like the ones of the view
+            const missing = positions.filter(pos => !exportWorld.copy(pos, world))
+            let next = 0
+            await Promise.all(Array.from({ length: Math.min(CONCURRENCY, missing.length) }, async () => {
+                while (next < missing.length) {
+                    const pos = missing[next++]!
+                    const mapblock = await options.getMapblock(pos)
+                    if (mapblock) {
+                        await prepare(mapblock)
+                        exportWorld.set(pos, mapblock)
+                    }
+                }
+            }))
+        } else {
+            positions = [...world.positions()]
+            for (const pos of positions) {
+                exportWorld.copy(pos, world)
+            }
+        }
+
+        const exportScene = await buildExportScene(exportWorld, positions, new MapblockMesher(nodes), materials, {
+            mode: exportOptions.mode ?? "baked",
+            dayNightRatio: timeToDayNightRatio(exportOptions.timeOfDay ?? timeOfDay),
+            camera: exportOptions.camera === false ? null : camera
+        })
+        try {
+            return await writeGLTF(exportScene, exportOptions.binary ?? true)
+        } finally {
+            disposeExportScene(exportScene)
+        }
+    }
+
+    return { setTimeOfDay, setCollision, setNoclip, updateMapblock, exportGLTF }
 }

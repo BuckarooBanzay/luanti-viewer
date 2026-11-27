@@ -50,6 +50,8 @@ export class MeshBuffer {
     uvs: number[] = []
     /** linear rgb per vertex at full daylight */
     colors: number[] = []
+    /** linear rgb per vertex without any light or face shading: the color of the node (e.g. from `color`) */
+    baseColors: number[] = []
     /** brightness at night relative to the one at day (0..1, gamma space) per vertex */
     nightFactors: number[] = []
     indices: number[] = []
@@ -439,6 +441,7 @@ export class MapblockMesher {
             buffer.positions.push(v[k * 3]! + this.ox, v[k * 3 + 1]! + this.oy, v[k * 3 + 2]! + this.oz)
             buffer.uvs.push(uv[k * 2]!, uv[k * 2 + 1]!)
             buffer.colors.push(brightness * r, brightness * g, brightness * b)
+            buffer.baseColors.push(r, g, b)
             buffer.nightFactors.push(nightFactor)
         }
         buffer.indices.push(base, base + 1, base + 2, base + 2, base + 3, base)
@@ -1317,6 +1320,7 @@ export class MapblockMesher {
                 buffer.uvs.push(source.uvs[k * 2]!, source.uvs[k * 2 + 1]!)
                 const brightness = this.brightness(this.light, normal[0]!, normal[1]!, normal[2]!)
                 buffer.colors.push(brightness * r, brightness * g, brightness * b)
+                buffer.baseColors.push(r, g, b)
                 buffer.nightFactors.push(NIGHT_FACTOR[this.light]!)
             }
             for (let k = 0; k < source.indices.length; k++) {

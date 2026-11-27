@@ -214,6 +214,31 @@ export type ViewerOptions = {
     }
 }
 
+/**
+ * light of an exported scene:
+ * "baked" - unlit materials with the light of the viewer in the vertex colors, looks like the viewer
+ * "raw" - lit (PBR) materials without any light in the vertex colors, for renderers with their own lighting (e.g. Cycles)
+ */
+export type ExportMode = "baked" | "raw"
+
+/** options of `Viewer.exportGLTF` */
+export type ExportOptions = {
+    /**
+     * area to export in mapblock coordinates (both inclusive), defaults to the loaded mapblocks,
+     * mapblocks in the area that are not loaded are fetched with `getMapblock`
+     */
+    minPos?: MapblockPosition
+    maxPos?: MapblockPosition
+    /** defaults to "baked" */
+    mode?: ExportMode
+    /** time of day of the baked light (see `Viewer.setTimeOfDay`), defaults to the current one */
+    timeOfDay?: number
+    /** include the current camera, defaults to true */
+    camera?: boolean
+    /** binary glTF (.glb) with embedded textures, otherwise .gltf with the textures as data urls, defaults to true */
+    binary?: boolean
+}
+
 /** handle of a view, returned by `createView` */
 export type Viewer = {
     /**
@@ -238,4 +263,11 @@ export type Viewer = {
      * Updates of the same mapblock are applied in the order of the calls.
      */
     updateMapblock(pos: MapblockPosition, mapblock: ParsedMapblock | null): void
+    /**
+     * Exports the scene as glTF, e.g. for blender: one mesh per texture with the textures embedded
+     * (nearest filtering, alpha modes and backface culling are kept) and optionally the camera.
+     * Animated textures are exported with their first frame. The export works on its own copy of the
+     * mapblocks, the view keeps running meanwhile.
+     */
+    exportGLTF(options?: ExportOptions): Promise<Blob>
 }

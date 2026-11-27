@@ -88,6 +88,16 @@ export class MaterialManager implements TileRegistry {
         return this.entries[id]!.material
     }
 
+    getTileSpec(id: number): TileSpec {
+        return this.entries[id]!.spec
+    }
+
+    /** the texture of a tile (the first frame of animated ones), rows from top to bottom */
+    async getTileImage(id: number): Promise<RgbaImage> {
+        const spec = this.entries[id]!.spec
+        return splitFrames(await this.textures.generate(spec.texture), spec).frames[0]!
+    }
+
     /** resolves once all textures requested so far are loaded */
     get pendingTextures(): number {
         return this.pending

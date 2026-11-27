@@ -91,6 +91,39 @@ socket.onmessage = event => {
 }
 ```
 
+### Export (glTF / blender)
+
+`exportGLTF` writes the scene as binary glTF (`.glb`), which blender imports with *File → Import → glTF 2.0*.
+The mapblocks are merged into one mesh per texture, the textures are embedded with their pixelated filtering,
+alpha modes and backface culling, and the current camera is included:
+
+```ts
+const blob = await viewer.exportGLTF({
+    // optional: "baked" (default) or "raw"
+    mode: "baked",
+    // optional: area in mapblock coordinates, defaults to the loaded mapblocks,
+    // missing ones are fetched with `getMapblock` (at most 32768 mapblocks)
+    minPos: { x: -2, y: -1, z: -2 },
+    maxPos: { x: 2, y: 2, z: 2 },
+    // optional: time of day of the baked light, defaults to the current one
+    timeOfDay: 0.5,
+    // optional: include the camera, defaults to true
+    camera: true
+})
+const link = document.createElement("a")
+link.href = URL.createObjectURL(blob)
+link.download = "scene.glb"
+link.click()
+```
+
+| Mode    | Materials | Vertex colors | Use for |
+|---------|-----------|---------------|---------|
+| `baked` | unlit (`KHR_materials_unlit`) | node color and the light of the viewer at the given time of day | the same look as in the viewer |
+| `raw`   | lit (PBR, roughness 1) with normals | node color only, left out if it is white everywhere | rendering with blender's own lights (Cycles / EEVEE), add a sun and a sky |
+
+Animated textures are exported with their first frame. In blender the scene is in engine coordinates rotated
+to Z-up: blender (X, Y, Z) = engine (-x, -z, y). The three.js `GLTFExporter` is loaded on the first export only.
+
 The viewer cleans up after itself (renderer, event listeners, GPU resources) once the element is removed from the document.
 
 ### Controls

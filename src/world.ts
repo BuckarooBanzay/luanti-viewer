@@ -44,6 +44,26 @@ export class World {
         return this.blocks.has(key(pos.x, pos.y, pos.z))
     }
 
+    /** positions of the loaded mapblocks */
+    *positions(): IterableIterator<MapblockPosition> {
+        for (const block of this.blocks.values()) {
+            yield { ...block.pos }
+        }
+    }
+
+    /**
+     * takes a mapblock over from another world with the same node registry (the data is shared, it is never modified),
+     * false if it is not loaded there
+     */
+    copy(pos: MapblockPosition, from: World): boolean {
+        const block = from.blocks.get(key(pos.x, pos.y, pos.z))
+        if (!block) {
+            return false
+        }
+        this.blocks.set(key(pos.x, pos.y, pos.z), block)
+        return true
+    }
+
     /**
      * true if the node at the given node position (engine coordinates) blocks the player:
      * walkable nodes and positions without a loaded mapblock (the player waits for them)

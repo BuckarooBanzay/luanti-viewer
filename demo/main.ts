@@ -89,6 +89,29 @@ async function main() {
     options.noclip = params.has("noclip")
     const viewer = createView(element, options)
     slider.addEventListener("input", () => viewer.setTimeOfDay(slider.valueAsNumber))
+
+    // glTF export of the loaded mapblocks with the current camera and time of day
+    document.getElementById("export-controls")!.hidden = false
+    const exportButton = document.getElementById("export-button") as HTMLButtonElement
+    const exportMode = document.getElementById("export-mode") as HTMLSelectElement
+    exportButton.addEventListener("click", async () => {
+        exportButton.disabled = true
+        exportButton.textContent = "exporting..."
+        try {
+            const blob = await viewer.exportGLTF({ mode: exportMode.value as "baked" | "raw" })
+            const link = document.createElement("a")
+            link.href = URL.createObjectURL(blob)
+            link.download = `luanti-${showcase ? "showcase" : "map"}-${exportMode.value}.glb`
+            link.click()
+            setTimeout(() => URL.revokeObjectURL(link.href), 1000)
+        } catch (e) {
+            console.error("export failed", e)
+            alert(`export failed: ${e instanceof Error ? e.message : e}`)
+        } finally {
+            exportButton.disabled = false
+            exportButton.textContent = "export .glb"
+        }
+    })
 }
 
 /**
