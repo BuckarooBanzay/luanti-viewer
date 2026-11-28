@@ -8,9 +8,9 @@ import { MAPBLOCK_SIZE, type ParsedMapblock } from "./mapblock.js"
 import { buildExportScene, disposeExportScene, writeGLTF } from "./export.js"
 import { createNeighborhood, MapblockMesher } from "./mesh/mesher.js"
 import { NodeRegistry } from "./mesh/nodes.js"
-import { SKY_COLOR, createGeometry, createMediaLoader, skyColorAt, startRenderLoop, timeToDayNightRatio } from "./scene.js"
+import { SKY_COLOR, createGeometry, createMediaLoader, skyColorAt, startRenderLoop, takeScreenshot, timeToDayNightRatio } from "./scene.js"
 import { applyLook, createTouchControls } from "./touch.js"
-import type { ExportOptions, MapblockPosition, Viewer, ViewerCamera, ViewerOptions } from "./types.js"
+import type { ExportOptions, MapblockPosition, ScreenshotOptions, Viewer, ViewerCamera, ViewerOptions } from "./types.js"
 import { World } from "./world.js"
 
 /** parallel getMapblock / getMedia requests */
@@ -605,5 +605,7 @@ export function createView(element: HTMLElement, options: ViewerOptions): Viewer
         }
     }
 
-    return { setTimeOfDay, setCollision, setNoclip, updateMapblock, exportGLTF }
+    const screenshot = (screenshotOptions?: ScreenshotOptions) => takeScreenshot(renderer, scene, camera, screenshotOptions)
+
+    return { setTimeOfDay, setCollision, setNoclip, updateMapblock, exportGLTF, screenshot }
 }

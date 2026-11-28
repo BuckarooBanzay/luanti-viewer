@@ -245,6 +245,16 @@ export type ExportOptions = {
     binary?: boolean
 }
 
+/** options of `Viewer.screenshot` and `NodeViewer.screenshot` */
+export type ScreenshotOptions = {
+    /**
+     * size of the image in pixels, defaults to the size of the view times the device pixel ratio,
+     * if only one of them is given the other one follows the aspect ratio of the view
+     */
+    width?: number
+    height?: number
+}
+
 /** handle of a view, returned by `createView` */
 export type Viewer = {
     /**
@@ -276,4 +286,10 @@ export type Viewer = {
      * mapblocks, the view keeps running meanwhile.
      */
     exportGLTF(options?: ExportOptions): Promise<Blob>
+    /**
+     * Takes a screenshot of the current camera view as PNG, optionally at another resolution than the view.
+     * The overlays (fps widget, touch controls) are not included. Another aspect ratio than the one of the
+     * view changes the horizontal field of view.
+     */
+    screenshot(options?: ScreenshotOptions): Promise<Blob>
 }

@@ -2,7 +2,7 @@
  * Building blocks shared by `createView` and `createNodeView`: conversion of the mesher output to three.js,
  * the day/night lighting, loading of textures and models and the render loop.
  */
-import { BufferAttribute, BufferGeometry, Color, type WebGLRenderer } from "three"
+import { BufferAttribute, BufferGeometry, Color, Vector2, type PerspectiveCamera, type Scene, type WebGLRenderer } from "three"
 import { MaterialManager } from "./materials.js"
 import type { MeshBuffer } from "./mesh/mesher.js"
 import type { NodeRegistry } from "./mesh/nodes.js"
@@ -10,6 +10,7 @@ import { parseB3d } from "./models/b3d.js"
 import type { Model } from "./models/model.js"
 import { parseObj } from "./models/obj.js"
 import { TextureCompositor, type RgbaImage } from "./texture/compositor.js"
+import type { ScreenshotOptions } from "./types.js"
 
 export const SKY_COLOR = 0x8cbafa
 /** sky color without any daylight */
@@ -181,5 +182,64 @@ export function startRenderLoop(
             return
         }
         frame(performance.now())
+    })
+}
+
+/**
+ * Size of a screenshot in pixels: defaults to the size of the view times the pixel ratio, a missing
+ * dimension follows the aspect ratio of the view. Throws for invalid sizes and sides above `maxSize`.
+ */
+export function screenshotSize(
+    options: ScreenshotOptions, viewWidth: number, viewHeight: number, pixelRatio: number, maxSize: number
+): { width: number, height: number } {
+    const aspect = viewWidth / viewHeight
+    const width = options.width ?? (options.height == null
+        ? Math.round(viewWidth * pixelRatio) : Math.round(options.height * aspect))
+    const height = options.height ?? (options.width == null
+        ? Math.round(viewHeight * pixelRatio) : Math.round(options.width / aspect))
+    for (const value of [width, height]) {
+        if (!Number.isInteger(value) || value < 1) {
+            throw new Error(`invalid screenshot size: ${width}x${height}`)
+        }
+        if (value > maxSize) {
+            throw new Error(`the screenshot is too large: ${width}x${height}, at most ${maxSize} pixels per side`)
+        }
+    }
+    return { width, height }
+}
+
+/**
+ * Renders the scene once at the size of the screenshot and returns it as PNG. Everything up to `toBlob`
+ * runs synchronously, the drawing buffer is still valid then (no `preserveDrawingBuffer` needed).
+ * The canvas keeps its css size, the view is rendered again at its own size afterwards.
+ */
+export function takeScreenshot(
+    renderer: WebGLRenderer, scene: Scene, camera: PerspectiveCamera, options: ScreenshotOptions = {}
+): Promise<Blob> {
+    const viewSize = renderer.getSize(new Vector2())
+    const pixelRatio = renderer.getPixelRatio()
+    const aspect = camera.aspect
+    const { width, height } = screenshotSize(options, viewSize.x, viewSize.y, pixelRatio, renderer.capabilities.maxTextureSize)
+    return new Promise<Blob>((resolve, reject) => {
+        try {
+            renderer.setPixelRatio(1)
+            renderer.setSize(width, height, false)
+            camera.aspect = width / height
+            camera.updateProjectionMatrix()
+            renderer.render(scene, camera)
+            renderer.domElement.toBlob(blob => {
+                if (blob) {
+                    resolve(blob)
+                } else {
+                    reject(new Error("the screenshot could not be encoded"))
+                }
+            }, "image/png")
+        } finally {
+            renderer.setPixelRatio(pixelRatio)
+            renderer.setSize(viewSize.x, viewSize.y, false)
+            camera.aspect = aspect
+            camera.updateProjectionMatrix()
+            renderer.render(scene, camera)
+        }
     })
 }

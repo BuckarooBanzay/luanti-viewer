@@ -2,8 +2,8 @@ import { Box3, Color, Group, Mesh, PerspectiveCamera, Scene, Sphere, Vector3, We
 import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js"
 import { createNeighborhood, MapblockMesher, paddedIndex, type MeshBuffer } from "./mesh/mesher.js"
 import { NodeRegistry } from "./mesh/nodes.js"
-import { SKY_COLOR, createGeometry, createMediaLoader, skyColorAt, startRenderLoop, timeToDayNightRatio } from "./scene.js"
-import type { NodeDefinition } from "./types.js"
+import { SKY_COLOR, createGeometry, createMediaLoader, skyColorAt, startRenderLoop, takeScreenshot, timeToDayNightRatio } from "./scene.js"
+import type { NodeDefinition, ScreenshotOptions } from "./types.js"
 
 export type NodeViewerOptions = {
     nodedefinition: NodeDefinition
@@ -42,6 +42,11 @@ export type NodeViewer = {
     setNodeDefinition(nodedefinition: NodeDefinition, param2?: number|null): void
     /** turns the auto rotation on or off, same as the `autoRotate` option */
     setAutoRotate(enabled: boolean): void
+    /**
+     * Takes a screenshot of the current camera view as PNG, optionally at another resolution than the view,
+     * transparent with the `background` option null
+     */
+    screenshot(options?: ScreenshotOptions): Promise<Blob>
 }
 
 /** vertical field of view of the camera (degrees) */
@@ -238,5 +243,7 @@ export function createNodeView(element: HTMLElement, options: NodeViewerOptions)
         controls.autoRotate = enabled
     }
 
-    return { setTimeOfDay, setNodeDefinition, setAutoRotate }
+    const screenshot = (screenshotOptions?: ScreenshotOptions) => takeScreenshot(renderer, scene, camera, screenshotOptions)
+
+    return { setTimeOfDay, setNodeDefinition, setAutoRotate, screenshot }
 }

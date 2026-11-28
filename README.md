@@ -132,6 +132,22 @@ set on the materials in blender.
 Animated textures are exported with their first frame. In blender the scene is in engine coordinates rotated
 to Z-up: blender (X, Y, Z) = engine (-x, -z, y). The three.js `GLTFExporter` is loaded on the first export only.
 
+### Screenshot
+
+`screenshot` returns the current camera view as PNG blob, by default at the resolution of the canvas
+(size of the view times the device pixel ratio). The overlays (fps widget, touch controls) are not included:
+
+```ts
+// optional: width and/or height in pixels, a missing one follows the aspect ratio of the view
+const blob = await viewer.screenshot({ width: 3840 })
+const link = document.createElement("a")
+link.href = URL.createObjectURL(blob)
+link.download = "screenshot.png"
+link.click()
+```
+
+`createNodeView` has the same `screenshot` method, with `background: null` the PNG is transparent.
+
 The viewer cleans up after itself (renderer, event listeners, GPU resources) once the element is removed from the document.
 
 ### Controls

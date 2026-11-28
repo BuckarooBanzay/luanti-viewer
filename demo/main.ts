@@ -112,6 +112,21 @@ async function main() {
             exportButton.textContent = "export .glb"
         }
     })
+
+    // screenshot of the current view at the resolution of the canvas
+    document.getElementById("screenshot-button")!.addEventListener("click", async () => {
+        try {
+            const blob = await viewer.screenshot()
+            const link = document.createElement("a")
+            link.href = URL.createObjectURL(blob)
+            link.download = `luanti-${showcase ? "showcase" : "map"}.png`
+            link.click()
+            setTimeout(() => URL.revokeObjectURL(link.href), 1000)
+        } catch (e) {
+            console.error("screenshot failed", e)
+            alert(`screenshot failed: ${e instanceof Error ? e.message : e}`)
+        }
+    })
 }
 
 /**
